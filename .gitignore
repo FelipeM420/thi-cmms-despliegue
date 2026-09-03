@@ -1,0 +1,36 @@
+# Dependencias (Cubre raíz, backend y frontend)
+node_modules/
+**/node_modules/
+
+# Variables de entorno y claves privadas
+.env
+*.env
+**/.env
+
+# Archivos comprimidos y de empaquetado
+*.zip
+*.tar.gz
+
+# Archivos de compilación de frontend
+dist/
+build/
+.vite/
+
+# Archivos de subida y logs
+logs/
+*.log
+src/uploads/*
+!src/uploads/.gitkeep
+backend/src/uploads/*
+!backend/src/uploads/.gitkeep
+
+# Base de datos local SQLite / temporales de Prisma (si aplicara) - PostgreSQL
+*.db
+*.sqlite
+*.sql
+
+# Archivos del sistema operativo y editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json

@@ -1,0 +1,107 @@
+// ============================================================================
+// CMMS THI S.A.S. — Esquema de base de datos (Prisma)
+// Sprint 1 · Gestión de Equipos y Acceso — HU1, HU2, HU3, HU24
+// ============================================================================
+// Los modelos de Sprint 2 en adelante (TareaMantenimiento, Cronograma, Alerta,
+// OrdenDeTrabajo, Insumo) se añaden en sus respectivos sprints, con relación
+// hacia Equipo y Usuario ya definidos aquí.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enumeraciones
+// ---------------------------------------------------------------------------
+
+// HU24 — Control de roles: administrador / técnico
+enum Rol {
+  ADMINISTRADOR
+  TECNICO
+}
+
+// HU2 — Clasificación de activos
+enum TipoActivo {
+  EQUIPO
+  INSUMO
+  MATERIA_PRIMA
+  CONSUMIBLE
+}
+
+enum EstadoEquipo {
+  ACTIVO
+  EN_MANTENIMIENTO
+  DADO_DE_BAJA
+}
+
+enum ResponsableMantenimiento {
+  INTERNO
+  EXTERNO
+}
+
+// ---------------------------------------------------------------------------
+// Modelos
+// ---------------------------------------------------------------------------
+
+// HU24 — Autenticación y control de acceso por rol
+model Usuario {
+  id            String   @id @default(uuid())
+  nombre        String
+  email         String   @unique
+  passwordHash  String
+  rol           Rol
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  equiposRegistrados Equipo[] @relation("EquipoRegistradoPor")
+
+  @@map("usuarios")
+}
+
+// HU1 — Tarjeta maestra de equipos · HU2 — Clasificación · HU3 — Consulta
+model Equipo {
+  id     String @id @default(uuid())
+  nombre String
+
+  // Código interno único (ej. "AC-102") — usado también como identificador
+  // visible en OT, alertas y reportes en los sprints siguientes.
+  referencia String @unique
+
+  // HU1 / BPMN "Registrar nuevo equipo" — paso "Registrar código serial":
+  // número de serie del FABRICANTE, distinto de `referencia` (que es el
+  // código interno de THI). El BPMN 2 lo persiste en un paso separado
+  // ("Guardar y asociar código serial al activo"), así que se valida y
+  // guarda independientemente de los datos generales.
+  numeroSerie String? @unique
+
+  marca              String?
+  anioAdquisicion    Int?
+  zona               String
+  tipoActivo         TipoActivo   @default(EQUIPO)
+  costo              Decimal?     @db.Decimal(14, 2)
+  descripcionTecnica String?
+
+  // HU1 — registro fotográfico y manual del equipo
+  fotoUrl      String?
+  manualPdfUrl String?
+
+  estado            EstadoEquipo             @default(ACTIVO)
+  tipoMantenimiento ResponsableMantenimiento @default(INTERNO)
+
+  registradoPorId String
+  registradoPor   Usuario @relation("EquipoRegistradoPor", fields: [registradoPorId], references: [id])
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([zona])
+  @@index([estado])
+  @@index([tipoActivo])
+  @@map("equipos")
+}
