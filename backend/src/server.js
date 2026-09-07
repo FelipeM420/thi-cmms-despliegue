@@ -7,6 +7,10 @@ const path = require('path');
 
 const authRoutes = require('./routes/auth.routes');
 const equiposRoutes = require('./routes/equipos.routes');
+const usuariosRoutes = require('./routes/usuarios.routes');
+const tareasMantenimientoRoutes = require('./routes/tareasMantenimiento.routes');
+const planesMantenimientoRoutes = require('./routes/planesMantenimiento.routes');
+const mantenimientosProgramadosRoutes = require('./routes/mantenimientosProgramados.routes');
 const { registrarAuditoria } = require('./middleware/auditoria');
 
 // ISO 25010 (Seguridad) — fail-fast: si falta un secreto de firma robusto,
@@ -51,6 +55,12 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth/login', limitadorLogin);
 app.use('/api/auth', authRoutes);
 app.use('/api/equipos', equiposRoutes);
+
+// Sprint 2 — Planificación del mantenimiento (HU4, HU5, HU6, HU7, HU8)
+app.use('/api/usuarios', usuariosRoutes);
+app.use('/api/tareas-mantenimiento', tareasMantenimientoRoutes);
+app.use('/api/planes-mantenimiento', planesMantenimientoRoutes);
+app.use('/api/mantenimientos-programados', mantenimientosProgramadosRoutes);
 
 // Manejador de errores de multer y otros errores no capturados en rutas
 // (evita que un archivo inválido, p. ej., tumbe el proceso sin respuesta).
