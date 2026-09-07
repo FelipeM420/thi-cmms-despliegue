@@ -1,65 +1,80 @@
-# CMMS THI S.A.S. — Backend (Sprint 1)
+# CMMS THI S.A.S. — Backend (Sprint 1 & Sprint 2)
 
-Cimientos del sistema: base de datos, autenticación por rol y gestión de
-equipos (HU1, HU2, HU3, HU24). Construido para calzar exactamente con el
-prototipo ya validado en Figma y con el subproceso "Registrar nuevo equipo"
-del BPMN.
+API REST y capa de persistencia para el sistema de mantenimiento preventivo hospitalario e industrial.  
+Cubre **Sprint 1** (Gestión de Equipos y Acceso) y **Sprint 2** (Planificación del Mantenimiento).
 
-## Instalación
+---
+
+## Instalación y Ejecución
 
 ```bash
+cd backend
 npm install
-cp .env.example .env
-# Edita .env: DATABASE_URL (Postgres) y JWT_SECRET
+cp .env.example .env      # Configura DATABASE_URL (PostgreSQL) y JWT_SECRET
 
-npx prisma generate
-npx prisma migrate dev --name sprint1_usuarios_equipos
-npm run seed        # crea el admin, el técnico y los 8 equipos del prototipo
-npm run dev          # http://localhost:4000
+npx prisma generate       # Genera el cliente tipado de Prisma
+npx prisma migrate dev    # Ejecuta las migraciones acumuladas (Sprint 1 y 2)
+npm run seed              # Puebla usuarios (admin, técnico) y 8 equipos de prueba
+npm run dev               # Servidor nodemon en http://localhost:4000
 ```
 
-## Usuarios de prueba (creados por el seed)
+---
 
-| Rol | Email | Password |
-|---|---|---|
-| Administrador | anfelombana123@umariana.edu.co | THIadmin2026* |
-| Técnico | sefemoreno123@umariana.edu.co | THItecnico2026* |
+## Endpoints de la API
 
-## Endpoints (Sprint 1)
-
-| Método | Ruta | Rol requerido | HU |
+### Autenticación y Usuarios
+| Método | Ruta | Rol requerido | Descripción / HU |
 |---|---|---|---|
-| POST | `/api/auth/login` | — | HU24 |
-| GET | `/api/auth/me` | Sesión activa | HU24 |
-| GET | `/api/equipos?buscar=&zona=&tipoActivo=&estado=` | Sesión activa | HU3 |
-| GET | `/api/equipos/:id` | Sesión activa | HU1, HU3 |
-| POST | `/api/equipos` (multipart: campos + `foto`, `manual`) | Administrador | HU1, HU2 |
-| PUT | `/api/equipos/:id` (multipart) | Administrador | HU1, HU2 |
+| `POST` | `/api/auth/login` | Público | Inicio de sesión con JWT y rate-limiting (HU24) |
+| `GET` | `/api/auth/me` | Autenticado | Información del usuario en sesión |
+| `GET` | `/api/usuarios?rol=TECNICO` | Autenticado | Lista usuarios técnicos para asignación de tareas (HU7) |
 
-## Cumplimiento normativo aplicado (ver Marco_Normativo_y_Legal.docx)
+### Gestión de Equipos (Sprint 1)
+| Método | Ruta | Rol requerido | Descripción / HU |
+|---|---|---|---|
+| `GET` | `/api/equipos` | Autenticado | Listado con filtros (`buscar`, `zona`, `tipoActivo`, `estado`) (HU3) |
+| `GET` | `/api/equipos/:id` | Autenticado | Ficha técnica completa del equipo (HU1, HU3) |
+| `POST` | `/api/equipos` | Administrador | Registro de equipo con subida de foto y manual PDF (HU1, HU2) |
+| `PUT` | `/api/equipos/:id` | Administrador | Actualización de datos del equipo y archivos (HU1, HU2) |
 
-- **Ley 1581 de 2012** — contraseñas con hash bcrypt, acceso restringido por
-  rol, validación de integridad de datos con Zod, bitácora de auditoría de
-  toda escritura (`src/middleware/auditoria.js`, log en `backend/logs/`).
-- **ISO 25010 (Seguridad)** — cabeceras HTTP seguras (`helmet`), límite de
-  10 intentos de login por IP cada 15 min (`express-rate-limit`), y arranque
-  fail-fast si `JWT_SECRET` falta o es débil.
+### Tareas y Planes de Mantenimiento (Sprint 2 - HU4, HU6)
+| Método | Ruta | Rol requerido | Descripción / HU |
+|---|---|---|---|
+| `GET` | `/api/tareas-mantenimiento` | Autenticado | Catálogo de tareas preventivas reutilizables (HU4) |
+| `POST` | `/api/tareas-mantenimiento` | Administrador | Crear nueva tarea con duración y frecuencia sugerida (HU4) |
+| `PUT` | `/api/tareas-mantenimiento/:id` | Administrador | Modificar tarea existente |
+| `DELETE` | `/api/tareas-mantenimiento/:id` | Administrador | Desactivar tarea |
+| `GET` | `/api/planes-mantenimiento` | Autenticado | Planes de mantenimiento vinculados a equipos (HU6) |
+| `POST` | `/api/planes-mantenimiento` | Administrador | Crear plan preventivo periódico por equipo (HU6) |
+| `POST` | `/api/planes-mantenimiento/:id/generar` | Administrador | Motor de materialización periódica de mantenimientos (HU6) |
+| `PUT` | `/api/planes-mantenimiento/:id` | Administrador | Actualizar configuración de plan |
+| `DELETE` | `/api/planes-mantenimiento/:id` | Administrador | Desactivar plan preventivo |
 
-## Pendiente de validar contra el BPMN 2 completo (fuera de alcance de Sprint 1)
+### Cronograma y Mantenimientos Programados (Sprint 2 - HU5, HU7, HU8)
+| Método | Ruta | Rol requerido | Descripción / HU |
+|---|---|---|---|
+| `GET` | `/api/mantenimientos-programados` | Autenticado | Cronograma general filtrable por fechas, estado, prioridad y equipo (HU5) |
+| `POST` | `/api/mantenimientos-programados` | Administrador | Programación manual de mantenimiento (HU5) |
+| `GET` | `/api/mantenimientos-programados/mis-tareas` | Técnico | Consulta de tareas asignadas al técnico autenticado (HU8) |
+| `PATCH` | `/api/mantenimientos-programados/:id/asignar` | Administrador | Asignar técnico responsable a un mantenimiento (HU7) |
+| `PATCH` | `/api/mantenimientos-programados/:id/estado` | Autenticado | Actualizar estado del mantenimiento |
+| `PUT` | `/api/mantenimientos-programados/:id` | Administrador | Modificar fecha o prioridad de un mantenimiento programado |
 
-Encontrado al revisar el proceso completo, para cuando lleguen a esos
-sprints — no bloquea nada de lo que hay aquí:
+---
 
-- Validación de capacitación vigente del técnico por equipo antes de asignar OT.
-- Subproceso de inventario (reserva de repuestos, stock mínimo, solicitud de compra).
-- Alertas inteligentes basadas en análisis de patrones históricos (predictivo, no solo por fecha).
-- El BPMN muestra 4 umbrales de alerta (30/15/8/1 días) vs. 3 en el Product Backlog (15/8/1).
+## Modelo de Datos (Prisma)
 
-Decidir con el asesor si esto se incorpora al backlog o se documenta como
-reducción de alcance deliberada del proceso completo.
+- **Sprint 1**: `Usuario`, `Equipo`.
+- **Sprint 2**: `TareaMantenimiento`, `PlanMantenimiento`, `MantenimientoProgramado`.
+- **Enums**: `Rol`, `TipoActivo`, `EstadoEquipo`, `ResponsableMantenimiento`, `FrecuenciaMantenimiento`, `PrioridadMantenimiento`, `EstadoMantenimientoProgramado`, `OrigenMantenimiento`.
 
-## Siguiente paso natural
+---
 
-Conectar esto al prototipo Figma: reemplazar los datos de ejemplo de las
-pantallas "Equipos · Listado / Nuevo / Ficha técnica" por llamadas reales a
-estos endpoints.
+## Preparación para Sprint 3 (Ejecución del Mantenimiento)
+
+En el Sprint 3 (HU9, HU10, HU11, HU12, HU13) se incorporará:
+1. **Ejecución de Mantenimiento**: Registro del técnico al ejecutar la tarea, marcándola en `EN_EJECUCION` y `COMPLETADO`.
+2. **Horas Trabajadas (HU10)**: Registro de tiempo real invertido vs. tiempo estimado.
+3. **Insumos y Repuestos (HU11)**: Catálogo y consumo de repuestos en el mantenimiento.
+4. **Cálculo de Costos (HU12)**: Costos combinados de mano de obra y materiales.
+5. **Tareas Pendientes (HU13)**: Registro de hallazgos y no conformidades encontradas durante la intervención.
