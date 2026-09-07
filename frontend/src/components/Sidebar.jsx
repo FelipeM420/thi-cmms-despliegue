@@ -13,6 +13,11 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const { usuario, logout } = useAuth();
+  const esAdmin = usuario?.rol === 'ADMINISTRADOR';
+  // Para el técnico, /mantenimiento es su vista "Mis tareas" (HU8).
+  const navItems = NAV_ITEMS.map((item) =>
+    item.to === '/mantenimiento' && !esAdmin ? { ...item, label: 'Mis Tareas' } : item
+  );
   const iniciales = usuario?.nombre
     ?.split(' ')
     .map((p) => p[0])
@@ -31,7 +36,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex flex-col gap-1">
-        {NAV_ITEMS.map(({ to, label, Icon }) => (
+        {navItems.map(({ to, label, Icon }) => (
           <NavLink
             key={to}
             to={to}

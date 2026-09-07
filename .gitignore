@@ -24,10 +24,15 @@ src/uploads/*
 backend/src/uploads/*
 !backend/src/uploads/.gitkeep
 
-# Base de datos local SQLite / temporales de Prisma (si aplicara) - PostgreSQL
+# Base de datos local SQLite / dumps temporales
 *.db
 *.sqlite
-*.sql
+*.dump
+*.dump.sql
+*.bak
+
+# Permitir migraciones de base de datos de Prisma
+!**/prisma/migrations/**/*.sql
 
 # Archivos del sistema operativo y editor
 .DS_Store

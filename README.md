@@ -1,64 +1,80 @@
-# CMMS THI S.A.S. — Sprint 1
+# CMMS THI S.A.S. — Sistema de Mantenimiento Preventivo
 
-Trabajo de grado — Universidad Mariana, Ingeniería de Sistemas.
-Sprint 1 · Gestión de Equipos y Acceso — HU1, HU2, HU3, HU24.
+Trabajo de grado — Universidad Mariana, Facultad de Ingeniería, Programa de Ingeniería de Sistemas.  
+**Autores**: Andrés Felipe Lombana Melo & Sebastián Felipe Moreno Martínez  
+**Asesor / Product Owner**: Mg. Diego Alejandro Narváez Meza  
+**Empresa**: Tecnologías Hospitalarias e Industriales S.A.S.  
 
-Full-stack: React + Vite (frontend) · Node.js + Express + Prisma + PostgreSQL (backend).
-Diseño validado contra el prototipo Figma y el subproceso "Registrar nuevo
-equipo" del BPMN del proyecto.
+Full-stack: React + Vite (frontend) · Node.js + Express + Prisma + PostgreSQL (backend).  
+Diseño y reglas de negocio validados contra el prototipo Figma y el flujo BPMN de mantenimiento preventivo para equipos biomédicos e industriales.
+
+---
+
+## Estado de los Sprints
+
+- [x] **Sprint 1 · Gestión de Equipos y Acceso (HU1, HU2, HU3, HU24)** — Tag `v0.1.0-sprint1`
+  - Base de datos (Usuario, Equipo), autenticación JWT y roles (ADMINISTRADOR, TECNICO).
+  - Catálogo de equipos con fotos y manuales PDF, clasificación de activos y filtros avanzados.
+- [x] **Sprint 2 · Planificación del Mantenimiento (HU4, HU5, HU6, HU7, HU8)** — Tag `v0.2.0-sprint2`
+  - Catálogo de tareas preventivas con estimación de tiempo y recursos (HU4).
+  - Cronograma y programación manual de mantenimientos con prioridad (HU5).
+  - Planes de mantenimiento preventivo con motor de periodicidad semanal/configurable (HU6).
+  - Asignación de mantenimientos a técnicos hospitalarios (HU7).
+  - Portal móvil / vista de técnico "Mis Tareas" asignadas (HU8).
+- [ ] **Sprint 3 · Ejecución del Mantenimiento (HU9, HU10, HU11, HU12, HU13)** *(Próximo)*
+  - Registro de ejecución en campo, horas hombre, repuestos/insumos usados y cálculo de costos.
+- [ ] **Sprint 4 · Órdenes de Trabajo y Alertas (HU14, HU15, HU16, HU17, HU18)** *(Planificado)*
+  - Generación de OT en PDF, alertas preventivas automáticas y control de vencimientos.
+- [ ] **Sprint 5 · Indicadores y Reportes (HU19, HU20, HU21, HU22, HU23)** *(Planificado)*
+  - Dashboard de disponibilidad de equipos biomédicos, costos y reportes ejecutivos.
+
+---
+
+## Estrategia de Ramas y Control de Versiones
+
+El repositorio sigue un flujo basado en GitFlow adaptado a Sprints:
+- **`main`**: Rama con versiones estables y entregas oficiales de cada Sprint (con tags `v0.1.0-sprint1`, `v0.2.0-sprint2`, etc.).
+- **`develop`**: Rama de integración continua de funcionalidades.
+- **`feature/sprint-X-...`**: Ramas de desarrollo para historias de usuario de cada sprint.
+
+---
 
 ## Arranque rápido
 
-**1. Backend**
+### 1. Backend
 ```bash
 cd backend
 npm install
-cp .env.example .env      # edita DATABASE_URL y JWT_SECRET
+cp .env.example .env      # Configura DATABASE_URL (Postgres) y JWT_SECRET (mínimo 16 caracteres)
 npx prisma generate
-npx prisma migrate dev --name sprint1_usuarios_equipos
-npm run seed                # crea admin, técnico y 8 equipos de ejemplo
-npm run dev                  # http://localhost:4000
+npx prisma migrate dev    # Aplica las migraciones de base de datos
+npm run seed              # Puebla usuarios de prueba y equipos base
+npm run dev               # Servidor activo en http://localhost:4000
 ```
 
-**2. Frontend** (en otra terminal)
+### 2. Frontend (en otra terminal)
 ```bash
 cd frontend
 npm install
-npm run dev                  # http://localhost:5173
+npm run dev               # Aplicación activa en http://localhost:5173
 ```
 
-Abre `http://localhost:5173` — el proxy de Vite ya reenvía `/api` al backend,
-no hace falta configurar CORS manualmente para desarrollo.
+Abre `http://localhost:5173` — el proxy de Vite redirige `/api` y `/uploads` al puerto 4000 de Node.
 
-## Usuarios de prueba
+---
 
-| Rol | Email | Password |
-|---|---|---|
-| Administrador | anfelombana123@umariana.edu.co | THIadmin2026* |
-| Técnico | sefemoreno123@umariana.edu.co | THItecnico2026* |
+## Usuarios de prueba (Semilla / Seed)
 
-## Qué queda cubierto de Sprint 1
+| Rol | Nombre | Email | Password |
+|---|---|---|---|
+| **Administrador** | Andrés Felipe Lombana Melo | `anfelombana123@umariana.edu.co` | `THIadmin2026*` |
+| **Técnico** | Sebastián Felipe Moreno Martínez | `sefemoreno123@umariana.edu.co` | `THItecnico2026*` |
 
-- [x] Diseño de base de datos (Usuario, Equipo) — `backend/prisma/schema.prisma`
-- [x] Autenticación con JWT y control de acceso por rol (HU24)
-- [x] Registro de equipos / tarjeta maestra, con carga de foto y manual PDF (HU1)
-- [x] Clasificación de activos (HU2)
-- [x] Listado de equipos con filtros por nombre, zona, tipo y estado (HU3)
-- [x] Ficha técnica de detalle (HU1, HU3)
-- [x] Navegación completa (sidebar de 6 módulos); los módulos de sprints
-      posteriores muestran un placeholder honesto en vez de datos inventados
+---
 
-## No es parte de Sprint 1 (a propósito)
+## Documentación del Proyecto (`./docs/`)
 
-Dashboard con indicadores, Mantenimiento, Órdenes de Trabajo, Alertas y
-Reportes están enrutados y accesibles desde el menú (para que la navegación
-se sienta completa en una demo), pero muestran "Disponible en Sprint N" —
-nada de datos de relleno haciéndose pasar por funcional.
-
-## Pendiente de decidir con el asesor (hallazgo del BPMN 2 completo)
-
-Ver `backend/README.md`, sección final: el BPMN completo modela validación
-de capacitación técnica por equipo, un subproceso de inventario con reorden
-automático, y alertas predictivas — ninguno de los tres está en las 24 HU
-actuales del backlog. Es una decisión de alcance para Sprint 2 en adelante,
-no algo que haya que resolver ahora.
+- `SPRINT PLANNING (1).docx`: Historias de usuario y criterios de aceptación detallados por sprint.
+- `PRODUCT_BACKLOG_ordenado.pdf`: Priorización formal de requerimientos funcionales.
+- `Marco_Normativo_y_Legal.docx`: Lineamientos de Ley 1581 (Habeas Data) y registros de auditoría.
+- `BPMN - Software Mantenimiento (2).png`: Diagrama de procesos BPMN de mantenimiento biomédico.

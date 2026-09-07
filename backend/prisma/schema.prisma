@@ -1,10 +1,11 @@
 // ============================================================================
 // CMMS THI S.A.S. — Esquema de base de datos (Prisma)
 // Sprint 1 · Gestión de Equipos y Acceso — HU1, HU2, HU3, HU24
+// Sprint 2 · Planificación del Mantenimiento — HU4, HU5, HU6, HU7, HU8
 // ============================================================================
-// Los modelos de Sprint 2 en adelante (TareaMantenimiento, Cronograma, Alerta,
-// OrdenDeTrabajo, Insumo) se añaden en sus respectivos sprints, con relación
-// hacia Equipo y Usuario ya definidos aquí.
+// Los modelos de Sprint 3 en adelante (RegistroEjecucion, OrdenDeTrabajo,
+// Alerta, Insumo) se añaden en sus respectivos sprints, con relación hacia
+// Equipo, Usuario y los modelos de mantenimiento ya definidos aquí.
 
 generator client {
   provider = "prisma-client-js"
@@ -44,6 +45,48 @@ enum ResponsableMantenimiento {
   EXTERNO
 }
 
+// HU6 — Gestionar frecuencia del mantenimiento preventivo. SEMANAL es el caso
+// principal del Sprint 2 (Sprint Planning: "lógica de frecuencia semanal";
+// BPMN: "OT preventiva con las tareas de la semana"); el resto de valores
+// queda disponible para no volver a migrar cuando se amplíe.
+enum FrecuenciaMantenimiento {
+  DIARIA
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+  BIMESTRAL
+  TRIMESTRAL
+  SEMESTRAL
+  ANUAL
+}
+
+// HU5 — "nivel de prioridad" del mantenimiento programado.
+enum PrioridadMantenimiento {
+  BAJA
+  MEDIA
+  ALTA
+  CRITICA
+}
+
+// Estado de una ocurrencia concreta del cronograma. En Sprint 2 solo se usan
+// PROGRAMADO / ASIGNADO / CANCELADO; los estados de ejecución (EN_EJECUCION,
+// COMPLETADO, NO_EJECUTADO) se activan en Sprint 3 y ya se dejan declarados.
+enum EstadoMantenimientoProgramado {
+  PROGRAMADO
+  ASIGNADO
+  EN_EJECUCION
+  COMPLETADO
+  NO_EJECUTADO
+  CANCELADO
+}
+
+// Distingue una ocurrencia creada a mano por el administrador (HU5) de una
+// materializada por el motor de frecuencia (HU6).
+enum OrigenMantenimiento {
+  MANUAL
+  AUTOMATICO
+}
+
 // ---------------------------------------------------------------------------
 // Modelos
 // ---------------------------------------------------------------------------
@@ -60,6 +103,12 @@ model Usuario {
   actualizadoEn DateTime @updatedAt
 
   equiposRegistrados Equipo[] @relation("EquipoRegistradoPor")
+
+  // Sprint 2 — Planificación del mantenimiento
+  tareasCreadas             TareaMantenimiento[]      @relation("TareaCreadaPor")
+  planesCreados             PlanMantenimiento[]       @relation("PlanCreadoPor")
+  mantenimientosAsignados   MantenimientoProgramado[] @relation("MantenimientoTecnicoAsignado")
+  mantenimientosGestionados MantenimientoProgramado[] @relation("MantenimientoAsignadoPor")
 
   @@map("usuarios")
 }
@@ -83,8 +132,8 @@ model Equipo {
   marca              String?
   anioAdquisicion    Int?
   zona               String
-  tipoActivo         TipoActivo   @default(EQUIPO)
-  costo              Decimal?     @db.Decimal(14, 2)
+  tipoActivo         TipoActivo @default(EQUIPO)
+  costo              Decimal?   @db.Decimal(14, 2)
   descripcionTecnica String?
 
   // HU1 — registro fotográfico y manual del equipo
@@ -97,6 +146,10 @@ model Equipo {
   registradoPorId String
   registradoPor   Usuario @relation("EquipoRegistradoPor", fields: [registradoPorId], references: [id])
 
+  // Sprint 2 — Planificación del mantenimiento
+  planesMantenimiento       PlanMantenimiento[]
+  mantenimientosProgramados MantenimientoProgramado[]
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -104,4 +157,115 @@ model Equipo {
   @@index([estado])
   @@index([tipoActivo])
   @@map("equipos")
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 2 · Planificación del Mantenimiento — HU4, HU5, HU6, HU7, HU8
+// ---------------------------------------------------------------------------
+
+// HU4 — Definir tareas de mantenimiento preventivo. Catálogo reutilizable:
+// la tarea describe "qué se hace" (actividad, recursos, tiempo, frecuencia
+// sugerida); el vínculo con un equipo concreto se hace en PlanMantenimiento.
+// `recursos` es texto libre en Sprint 2 — el registro formal de insumos y
+// repuestos llega en Sprint 3 (HU11).
+model TareaMantenimiento {
+  id          String  @id @default(uuid())
+  nombre      String
+  descripcion String?
+  recursos    String?
+
+  // "tiempo" del criterio de aceptación de HU4.
+  duracionEstimadaMin Int?
+
+  frecuenciaSugerida FrecuenciaMantenimiento?
+  tipoMantenimiento  ResponsableMantenimiento @default(INTERNO)
+  activa             Boolean                  @default(true)
+
+  creadaPorId String
+  creadaPor   Usuario @relation("TareaCreadaPor", fields: [creadaPorId], references: [id])
+
+  planes                    PlanMantenimiento[]
+  mantenimientosProgramados MantenimientoProgramado[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([activa])
+  @@map("tareas_mantenimiento")
+}
+
+// HU6 — Gestionar frecuencia. Es "la regla": una tarea aplicada a un equipo
+// con una periodicidad. El motor de frecuencia materializa ocurrencias
+// (MantenimientoProgramado) a partir de `fechaInicio` y `frecuencia`, sin
+// pasar de `proximaGeneracionHasta` para no duplicar al re-ejecutar.
+model PlanMantenimiento {
+  id String @id @default(uuid())
+
+  equipoId String
+  equipo   Equipo @relation(fields: [equipoId], references: [id])
+
+  tareaId String
+  tarea   TareaMantenimiento @relation(fields: [tareaId], references: [id])
+
+  frecuencia          FrecuenciaMantenimiento
+  fechaInicio         DateTime
+  prioridadPorDefecto PrioridadMantenimiento  @default(MEDIA)
+  activo              Boolean                 @default(true)
+
+  // Hasta qué fecha ya se generaron ocurrencias para este plan (idempotencia).
+  proximaGeneracionHasta DateTime?
+
+  creadoPorId String
+  creadoPor   Usuario @relation("PlanCreadoPor", fields: [creadoPorId], references: [id])
+
+  mantenimientosProgramados MantenimientoProgramado[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  // Un equipo no repite la misma tarea en dos planes distintos.
+  @@unique([equipoId, tareaId])
+  @@index([activo])
+  @@map("planes_mantenimiento")
+}
+
+// HU5 — Programar mantenimiento (cronograma) · HU7 — Asignar a técnico ·
+// HU8 — El técnico consulta las suyas. Es "el evento concreto con fecha".
+// Se crea a mano (origen MANUAL, sin `planId`) o desde un plan (origen
+// AUTOMATICO, con `planId`).
+model MantenimientoProgramado {
+  id String @id @default(uuid())
+
+  equipoId String
+  equipo   Equipo @relation(fields: [equipoId], references: [id])
+
+  tareaId String
+  tarea   TareaMantenimiento @relation(fields: [tareaId], references: [id])
+
+  planId String?
+  plan   PlanMantenimiento? @relation(fields: [planId], references: [id])
+
+  fechaProgramada DateTime
+  prioridad       PrioridadMantenimiento        @default(MEDIA)
+  estado          EstadoMantenimientoProgramado @default(PROGRAMADO)
+  origen          OrigenMantenimiento           @default(MANUAL)
+  notas           String?
+
+  // HU7 — nulos hasta que el administrador asigna un técnico.
+  tecnicoAsignadoId String?
+  tecnicoAsignado   Usuario? @relation("MantenimientoTecnicoAsignado", fields: [tecnicoAsignadoId], references: [id])
+
+  asignadoPorId String?
+  asignadoPor   Usuario? @relation("MantenimientoAsignadoPor", fields: [asignadoPorId], references: [id])
+
+  fechaAsignacion DateTime?
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([fechaProgramada])
+  @@index([estado])
+  @@index([tecnicoAsignadoId])
+  @@index([equipoId])
+  @@map("mantenimientos_programados")
 }
