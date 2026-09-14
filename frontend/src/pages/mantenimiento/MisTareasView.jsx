@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock } from 'lucide-react';
+import { CalendarClock, Play, RotateCw, FileText } from 'lucide-react';
 import PrioridadBadge from '../../components/PrioridadBadge';
 import EstadoMantenimientoBadge from '../../components/EstadoMantenimientoBadge';
+import HojaEjecucionModal from './HojaEjecucionModal';
 import { listarMisTareas } from '../../api/mantenimiento';
 import { claveFecha, formatearFecha, hoyISO } from '../../utils/mantenimiento';
 
@@ -10,14 +11,19 @@ const FILTROS_ESTADO = [
   ['ASIGNADO', 'Asignadas'],
   ['EN_EJECUCION', 'En ejecución'],
   ['COMPLETADO', 'Completadas'],
+  ['NO_EJECUTADO', 'No ejecutadas'],
 ];
 
-// HU8 — El técnico consulta sus tareas asignadas ("lista filtrada por usuario").
+const TERMINALES = ['COMPLETADO', 'NO_EJECUTADO', 'CANCELADO'];
+const POR_INICIAR = ['ASIGNADO', 'PROGRAMADO'];
+
+// HU8 — El técnico consulta sus tareas asignadas · HU9–HU13 — y ejecuta cada una.
 export default function MisTareasView() {
   const [tareas, setTareas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [estado, setEstado] = useState('');
+  const [hoja, setHoja] = useState(null);
 
   const recargar = useCallback(async () => {
     setCargando(true);
@@ -37,9 +43,8 @@ export default function MisTareasView() {
 
   const hoy = hoyISO();
 
-  // Agrupa en Vencidas / Hoy / Próximas para que el técnico priorice.
   const grupos = useMemo(() => {
-    const abiertas = (t) => !['COMPLETADO', 'CANCELADO'].includes(t.estado);
+    const abiertas = (t) => !TERMINALES.includes(t.estado);
     const g = { vencidas: [], hoy: [], proximas: [], cerradas: [] };
     for (const t of tareas) {
       const dia = claveFecha(t.fechaProgramada);
@@ -67,7 +72,7 @@ export default function MisTareasView() {
           <h2 className="text-xl font-bold text-slate-900">Mis tareas asignadas</h2>
           <p className="mt-0.5 text-sm text-slate-500">{tareas.length} tarea(s) de mantenimiento asignadas a ti</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {FILTROS_ESTADO.map(([v, txt]) => (
             <button
               key={v || 'todas'}
@@ -109,7 +114,7 @@ export default function MisTareasView() {
                 </h3>
                 <div className="flex flex-col gap-2">
                   {lista.map((t) => (
-                    <TarjetaTarea key={t.id} tarea={t} />
+                    <TarjetaTarea key={t.id} tarea={t} onAbrir={() => setHoja(t)} />
                   ))}
                 </div>
               </div>
@@ -117,28 +122,35 @@ export default function MisTareasView() {
         </div>
       )}
 
-      {!cargando && tareas.length > 0 && (
-        <p className="mt-6 rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-500">
-          El registro de ejecución (evidencias, horas, insumos) se habilita en Sprint 3.
-        </p>
+      {hoja && (
+        <HojaEjecucionModal
+          mantenimiento={hoja}
+          soloLectura={TERMINALES.includes(hoja.estado)}
+          autoIniciar={POR_INICIAR.includes(hoja.estado)}
+          onClose={() => setHoja(null)}
+          onCambio={recargar}
+        />
       )}
     </div>
   );
 }
 
-function TarjetaTarea({ tarea }) {
+function TarjetaTarea({ tarea, onAbrir }) {
+  const accion =
+    POR_INICIAR.includes(tarea.estado)
+      ? { txt: 'Iniciar mantenimiento', Icon: Play, clase: 'bg-blue-600 text-white hover:bg-blue-700' }
+      : tarea.estado === 'EN_EJECUCION'
+      ? { txt: 'Continuar ejecución', Icon: RotateCw, clase: 'bg-blue-600 text-white hover:bg-blue-700' }
+      : tarea.estado === 'CANCELADO'
+      ? null
+      : { txt: 'Ver hoja de ejecución', Icon: FileText, clase: 'border border-slate-200 text-slate-700 hover:bg-slate-50' };
+
   return (
     <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-5 py-4">
       <div className="w-24 shrink-0 text-center">
-        <p className="text-xs uppercase text-slate-400">
-          {formatearFecha(tarea.fechaProgramada, { month: 'short' })}
-        </p>
-        <p className="text-2xl font-bold text-slate-900">
-          {claveFecha(tarea.fechaProgramada).slice(8, 10)}
-        </p>
-        <p className="text-xs text-slate-400">
-          {formatearFecha(tarea.fechaProgramada, { weekday: 'short' })}
-        </p>
+        <p className="text-xs uppercase text-slate-400">{formatearFecha(tarea.fechaProgramada, { month: 'short' })}</p>
+        <p className="text-2xl font-bold text-slate-900">{claveFecha(tarea.fechaProgramada).slice(8, 10)}</p>
+        <p className="text-xs text-slate-400">{formatearFecha(tarea.fechaProgramada, { weekday: 'short' })}</p>
       </div>
       <div className="min-w-0 flex-1">
         <p className="font-medium text-slate-900">{tarea.tarea?.nombre}</p>
@@ -155,6 +167,14 @@ function TarjetaTarea({ tarea }) {
           <span className="text-xs text-slate-400">≈ {tarea.tarea.duracionEstimadaMin} min</span>
         )}
       </div>
+      {accion && (
+        <button
+          onClick={onAbrir}
+          className={`flex shrink-0 items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${accion.clase}`}
+        >
+          <accion.Icon size={15} /> {accion.txt}
+        </button>
+      )}
     </div>
   );
 }

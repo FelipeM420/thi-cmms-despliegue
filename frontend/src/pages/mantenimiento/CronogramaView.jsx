@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, FileText } from 'lucide-react';
 import PrioridadBadge from '../../components/PrioridadBadge';
 import EstadoMantenimientoBadge from '../../components/EstadoMantenimientoBadge';
 import Modal from '../../components/Modal';
+import HojaEjecucionModal from './HojaEjecucionModal';
 import { listarEquipos } from '../../api/equipos';
 import {
   listarCronograma,
@@ -25,6 +26,7 @@ import {
 } from '../../utils/mantenimiento';
 
 const CERRADO = ['COMPLETADO', 'CANCELADO'];
+const CON_EJECUCION = ['EN_EJECUCION', 'COMPLETADO', 'NO_EJECUTADO'];
 
 // HU5 — Programar mantenimiento (cronograma) · HU7 — Asignar a un técnico.
 export default function CronogramaView() {
@@ -37,6 +39,7 @@ export default function CronogramaView() {
   const [diaSel, setDiaSel] = useState(null);
   const [modalNuevo, setModalNuevo] = useState(false);
   const [detalle, setDetalle] = useState(null);
+  const [hoja, setHoja] = useState(null);
 
   // Catálogos para los formularios (se cargan una vez).
   const [equipos, setEquipos] = useState([]);
@@ -253,6 +256,18 @@ export default function CronogramaView() {
           tecnicos={tecnicos}
           onClose={() => setDetalle(null)}
           onCambio={onItemActualizado}
+          onVerHoja={() => {
+            setHoja(detalle);
+            setDetalle(null);
+          }}
+        />
+      )}
+
+      {hoja && (
+        <HojaEjecucionModal
+          mantenimiento={hoja}
+          soloLectura
+          onClose={() => setHoja(null)}
         />
       )}
     </div>
@@ -348,7 +363,7 @@ function FormNuevoMantenimiento({ equipos, tareas, fechaInicial, onClose, onCrea
 }
 
 // --- Detalle + asignación (HU5/HU7) --------------------------------------
-function DetalleMantenimiento({ item, tecnicos, onClose, onCambio }) {
+function DetalleMantenimiento({ item, tecnicos, onClose, onCambio, onVerHoja }) {
   const [tecnicoId, setTecnicoId] = useState(item.tecnicoAsignadoId || '');
   const [fecha, setFecha] = useState(claveFecha(item.fechaProgramada));
   const [error, setError] = useState('');
@@ -421,6 +436,15 @@ function DetalleMantenimiento({ item, tecnicos, onClose, onCambio }) {
           </div>
         )}
       </dl>
+
+      {CON_EJECUCION.includes(item.estado) && (
+        <button
+          onClick={onVerHoja}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          <FileText size={15} /> Ver hoja de ejecución (HU9–HU13)
+        </button>
+      )}
 
       {cerrado ? (
         <p className="mt-5 rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-500">
