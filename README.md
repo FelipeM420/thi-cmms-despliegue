@@ -21,9 +21,14 @@ Diseño y reglas de negocio validados contra el prototipo Figma y el flujo BPMN 
   - Planes de mantenimiento preventivo con motor de periodicidad semanal/configurable (HU6).
   - Asignación de mantenimientos a técnicos hospitalarios (HU7).
   - Portal móvil / vista de técnico "Mis Tareas" asignadas (HU8).
-- [ ] **Sprint 3 · Ejecución del Mantenimiento (HU9, HU10, HU11, HU12, HU13)** *(Próximo)*
-  - Registro de ejecución en campo, horas hombre, repuestos/insumos usados y cálculo de costos.
-- [ ] **Sprint 4 · Órdenes de Trabajo y Alertas (HU14, HU15, HU16, HU17, HU18)** *(Planificado)*
+- [x] **Sprint 3 · Ejecución del Mantenimiento (HU9, HU10, HU11, HU12, HU13)** — Tag `v0.3.0-sprint3`
+  - Hoja de ejecución y registro en campo con firma de conformidad y fotos antes/después (HU9).
+  - Control de tiempos (hora inicio, hora fin, pausas, minutos efectivos) (HU10).
+  - Registro de insumos y consumibles utilizados con costos por línea (HU11).
+  - Cálculo automático de costos totales (mano de obra según tiempo y técnicos + insumos) (HU12).
+  - Registro de tareas pendientes, hallazgos y justificación obligatoria si no se ejecuta (HU13).
+  - Integración con el estado del equipo (`EN_MANTENIMIENTO` -> `ACTIVO`).
+- [ ] **Sprint 4 · Órdenes de Trabajo y Alertas (HU14, HU15, HU16, HU17, HU18)** *(Próximo)*
   - Generación de OT en PDF, alertas preventivas automáticas y control de vencimientos.
 - [ ] **Sprint 5 · Indicadores y Reportes (HU19, HU20, HU21, HU22, HU23)** *(Planificado)*
   - Dashboard de disponibilidad de equipos biomédicos, costos y reportes ejecutivos.
@@ -67,8 +72,8 @@ Abre `http://localhost:5173` — el proxy de Vite redirige `/api` y `/uploads` a
 
 | Rol | Nombre | Email | Password |
 |---|---|---|---|
-| **Administrador** | Andrés Felipe Lombana Melo | `anfelombana123@umariana.edu.co` | `THIadmin2026*` |
-| **Técnico** | Sebastián Felipe Moreno Martínez | `sefemoreno123@umariana.edu.co` | `THItecnico2026*` |
+| **Administrador** | Andrés Felipe Lombana  | `anfelombana123@umariana.edu.co` | `THIadmin2026*` |
+| **Técnico** | Sebastián Felipe Moreno | `sefemoreno123@umariana.edu.co` | `THItecnico2026*` |
 
 ---
 
@@ -77,4 +82,5 @@ Abre `http://localhost:5173` — el proxy de Vite redirige `/api` y `/uploads` a
 - `SPRINT PLANNING (1).docx`: Historias de usuario y criterios de aceptación detallados por sprint.
 - `PRODUCT_BACKLOG_ordenado.pdf`: Priorización formal de requerimientos funcionales.
 - `Marco_Normativo_y_Legal.docx`: Lineamientos de Ley 1581 (Habeas Data) y registros de auditoría.
-- `BPMN - Software Mantenimiento (2).png`: Diagrama de procesos BPMN de mantenimiento biomédico.
+- `BPMN - Software Mantenimiento (2).png`: Diagrama de procesos BPMN de mantenimiento biomédico. 
+
