@@ -7,6 +7,10 @@ const {
   actualizar,
   asignar,
 } = require('../controllers/mantenimientosProgramados.controller');
+const {
+  iniciar: iniciarEjecucion,
+  obtenerPorMantenimiento: obtenerEjecucion,
+} = require('../controllers/ejecuciones.controller');
 const { verificarToken, requiereRol } = require('../middleware/auth');
 
 const router = express.Router();
@@ -31,5 +35,11 @@ router.put('/:id', requiereRol('ADMINISTRADOR'), actualizar);
 
 // HU7 — asignar a un técnico.
 router.patch('/:id/asignar', requiereRol('ADMINISTRADOR'), asignar);
+
+// HU9 (Sprint 3) — el técnico asignado (o el admin) abre / consulta la
+// ejecución de este mantenimiento. El controlador de ejecuciones restringe
+// el acceso.
+router.post('/:id/ejecucion/iniciar', iniciarEjecucion);
+router.get('/:id/ejecucion', obtenerEjecucion);
 
 module.exports = router;
