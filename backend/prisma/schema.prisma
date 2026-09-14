@@ -2,10 +2,11 @@
 // CMMS THI S.A.S. — Esquema de base de datos (Prisma)
 // Sprint 1 · Gestión de Equipos y Acceso — HU1, HU2, HU3, HU24
 // Sprint 2 · Planificación del Mantenimiento — HU4, HU5, HU6, HU7, HU8
+// Sprint 3 · Ejecución del Mantenimiento — HU9, HU10, HU11, HU12, HU13
 // ============================================================================
-// Los modelos de Sprint 3 en adelante (RegistroEjecucion, OrdenDeTrabajo,
-// Alerta, Insumo) se añaden en sus respectivos sprints, con relación hacia
-// Equipo, Usuario y los modelos de mantenimiento ya definidos aquí.
+// Los modelos de Sprint 4 en adelante (OrdenDeTrabajo, Alerta) se añaden en
+// sus respectivos sprints, con relación hacia Equipo, Usuario y los modelos
+// de mantenimiento y ejecución ya definidos aquí.
 
 generator client {
   provider = "prisma-client-js"
@@ -87,6 +88,15 @@ enum OrigenMantenimiento {
   AUTOMATICO
 }
 
+// HU13 — motivo obligatorio de una tarea pendiente o de un mantenimiento no
+// ejecutado. El criterio de aceptación nombra explícitamente "insumos o
+// personal"; OTRO cubre el resto sin habilitar texto sin clasificar.
+enum MotivoNoEjecucion {
+  FALTA_INSUMOS
+  FALTA_PERSONAL
+  OTRO
+}
+
 // ---------------------------------------------------------------------------
 // Modelos
 // ---------------------------------------------------------------------------
@@ -109,6 +119,9 @@ model Usuario {
   planesCreados             PlanMantenimiento[]       @relation("PlanCreadoPor")
   mantenimientosAsignados   MantenimientoProgramado[] @relation("MantenimientoTecnicoAsignado")
   mantenimientosGestionados MantenimientoProgramado[] @relation("MantenimientoAsignadoPor")
+
+  // Sprint 3 — Ejecución del mantenimiento
+  ejecuciones RegistroEjecucion[] @relation("EjecucionTecnico")
 
   @@map("usuarios")
 }
@@ -149,6 +162,10 @@ model Equipo {
   // Sprint 2 — Planificación del mantenimiento
   planesMantenimiento       PlanMantenimiento[]
   mantenimientosProgramados MantenimientoProgramado[]
+
+  // Sprint 3 — filas de tipoActivo INSUMO/CONSUMIBLE/MATERIA_PRIMA consumidas
+  // en una ejecución (vínculo opcional; ver InsumoUtilizado).
+  insumosUtilizados InsumoUtilizado[] @relation("InsumoDeEquipo")
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -260,6 +277,9 @@ model MantenimientoProgramado {
 
   fechaAsignacion DateTime?
 
+  // Sprint 3 — la ejecución concreta de este mantenimiento (1:1).
+  registroEjecucion RegistroEjecucion?
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -268,4 +288,114 @@ model MantenimientoProgramado {
   @@index([tecnicoAsignadoId])
   @@index([equipoId])
   @@map("mantenimientos_programados")
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 3 · Ejecución del Mantenimiento — HU9, HU10, HU11, HU12, HU13
+// ---------------------------------------------------------------------------
+
+// HU9 — Registro de la ejecución de un MantenimientoProgramado (1:1). El
+// técnico lo abre al iniciar (padre -> EN_EJECUCION, equipo -> EN_MANTENIMIENTO)
+// y lo cierra al finalizar (padre -> COMPLETADO o NO_EJECUTADO). Tras fijarse
+// `finalizadoEn` el registro y sus hijos quedan de solo lectura.
+model RegistroEjecucion {
+  id String @id @default(uuid())
+
+  mantenimientoProgramadoId String                  @unique
+  mantenimientoProgramado   MantenimientoProgramado @relation(fields: [mantenimientoProgramadoId], references: [id])
+
+  // Técnico responsable de la ejecución (normalmente el asignado en HU7).
+  tecnicoId String
+  tecnico   Usuario @relation("EjecucionTecnico", fields: [tecnicoId], references: [id])
+
+  // HU9 — "guarda fecha". Si se omite, se deriva de `horaInicio`.
+  fechaEjecucion DateTime @default(now())
+
+  // HU10 — hora de inicio y de finalización de la tarea.
+  horaInicio        DateTime?
+  horaFin           DateTime?
+  minutosPausa      Int       @default(0)
+  // Calculado al finalizar (horaFin - horaInicio - pausa) o cargado a mano.
+  minutosTrabajados Int?
+
+  // HU12 — "Número de técnicos" de la fórmula de costo. Entrada manual: HU7
+  // asigna un único técnico responsable.
+  numeroTecnicos Int @default(1)
+
+  // HU9 — observaciones y firma (confirmación textual del técnico autenticado).
+  observaciones String?
+  firmaTecnico  String?
+
+  // HU9 — evidencia fotográfica antes / después (almacenamiento local /uploads).
+  evidenciaAntesUrl   String?
+  evidenciaDespuesUrl String?
+
+  // HU13 — si el mantenimiento no se ejecutó, el motivo es obligatorio.
+  motivoNoEjecucion    String?
+  categoriaNoEjecucion MotivoNoEjecucion?
+
+  // HU12 — costos (snapshot congelado al finalizar).
+  valorHoraManoObra Decimal? @db.Decimal(14, 2)
+  costoManoObra     Decimal? @db.Decimal(14, 2)
+  costoInsumos      Decimal? @db.Decimal(14, 2)
+  costoTotal        Decimal? @db.Decimal(14, 2)
+
+  finalizadoEn DateTime?
+
+  insumos    InsumoUtilizado[]
+  pendientes TareaPendiente[]
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([tecnicoId])
+  @@index([fechaEjecucion])
+  @@map("registros_ejecucion")
+}
+
+// HU11 — Insumo, consumible o repuesto utilizado en una ejecución. `descripcion`
+// es un snapshot obligatorio; `equipoInsumo` enlaza opcionalmente con una fila
+// de Equipo cuyo tipoActivo sea INSUMO / CONSUMIBLE / MATERIA_PRIMA.
+model InsumoUtilizado {
+  id String @id @default(uuid())
+
+  registroEjecucionId String
+  registroEjecucion   RegistroEjecucion @relation(fields: [registroEjecucionId], references: [id], onDelete: Cascade)
+
+  descripcion String
+
+  equipoInsumoId String?
+  equipoInsumo   Equipo? @relation("InsumoDeEquipo", fields: [equipoInsumoId], references: [id])
+
+  cantidad      Decimal  @db.Decimal(14, 2)
+  unidad        String?
+  costoUnitario Decimal? @db.Decimal(14, 2)
+  costoLinea    Decimal? @db.Decimal(14, 2)
+
+  creadoEn DateTime @default(now())
+
+  @@index([registroEjecucionId])
+  @@map("insumos_utilizados")
+}
+
+// HU13 — Hallazgo, avería adicional o tarea postergada detectada durante la
+// ejecución. Aplica tanto a un mantenimiento COMPLETADO (hallazgos) como a uno
+// NO_EJECUTADO. `categoria` (el motivo) es obligatoria.
+model TareaPendiente {
+  id String @id @default(uuid())
+
+  registroEjecucionId String
+  registroEjecucion   RegistroEjecucion @relation(fields: [registroEjecucionId], references: [id], onDelete: Cascade)
+
+  descripcion String
+  categoria   MotivoNoEjecucion
+  prioridad   PrioridadMantenimiento @default(MEDIA)
+  resuelta    Boolean                @default(false)
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([registroEjecucionId])
+  @@index([resuelta])
+  @@map("tareas_pendientes")
 }

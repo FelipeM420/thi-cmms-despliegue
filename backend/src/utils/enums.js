@@ -1,5 +1,5 @@
-// Valores de los enums de Prisma del Sprint 2, en un solo lugar para que los
-// esquemas de Zod de los tres controladores no se desincronicen del schema.
+// Valores de los enums de Prisma (Sprint 2 y 3) en un solo lugar para que los
+// esquemas de Zod de los controladores no se desincronicen del schema.
 // (Deben coincidir exactamente con prisma/schema.prisma.)
 
 const FRECUENCIAS = [
@@ -34,6 +34,15 @@ const ESTADOS_EDITABLES_SPRINT2 = ['PROGRAMADO', 'ASIGNADO', 'CANCELADO'];
 
 const ORIGENES_MANTENIMIENTO = ['MANUAL', 'AUTOMATICO'];
 
+// --- Sprint 3 · Ejecución del mantenimiento --------------------------------
+
+// HU13 — motivo de una tarea pendiente / de un mantenimiento no ejecutado.
+const MOTIVOS_NO_EJECUCION = ['FALTA_INSUMOS', 'FALTA_PERSONAL', 'OTRO'];
+
+// HU9 — desenlace de una ejecución al finalizarla. Coincide con los estados
+// terminales de EstadoMantenimientoProgramado que fija el cierre.
+const RESULTADOS_EJECUCION = ['COMPLETADO', 'NO_EJECUTADO'];
+
 module.exports = {
   FRECUENCIAS,
   PRIORIDADES,
@@ -41,4 +50,6 @@ module.exports = {
   ESTADOS_MANTENIMIENTO,
   ESTADOS_EDITABLES_SPRINT2,
   ORIGENES_MANTENIMIENTO,
+  MOTIVOS_NO_EJECUCION,
+  RESULTADOS_EJECUCION,
 };

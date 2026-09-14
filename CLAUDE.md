@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) and AI assistants wh
 ## What this is
 
 CMMS (preventive-maintenance system) for THI S.A.S. — a Universidad Mariana thesis project (Authors: Andrés Lombana & Sebastián Moreno).
-This repo covers **Sprint 1** (HU1, HU2, HU3, HU24) and **Sprint 2** (HU4, HU5, HU6, HU7, HU8).
-Next implementation phase is **Sprint 3** (HU9, HU10, HU11, HU12, HU13: Ejecución del mantenimiento).
+This repo covers **Sprint 1** (HU1-HU3, HU24), **Sprint 2** (HU4-HU8) and **Sprint 3** (HU9-HU13: Ejecución del mantenimiento).
+Next implementation phase is **Sprint 4** (HU14, HU15, HU16, HU17, HU18: Órdenes de trabajo y alertas).
 Two independent npm projects, no workspace root: `backend/` (Node + Express + Prisma + PostgreSQL) and `frontend/` (React + Vite).
 
 ## Language convention
@@ -62,29 +62,34 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
   - `PlanMantenimiento` (HU6): regla periódica que asocia un equipo con una tarea y frecuencia.
   - `MantenimientoProgramado` (HU5, HU7, HU8): ocurrencia concreta en calendario con fecha, prioridad, estado y técnico asignado.
   - Enums: `Rol`, `TipoActivo`, `EstadoEquipo`, `ResponsableMantenimiento`, `FrecuenciaMantenimiento`, `PrioridadMantenimiento`, `EstadoMantenimientoProgramado`, `OrigenMantenimiento`.
-- **Sprint 3+ models** (registro de ejecución, repuestos, insumos, órdenes de trabajo, alertas) attach to `Equipo`, `Usuario`, and `MantenimientoProgramado`.
+- **Sprint 3**:
+  - `RegistroEjecucion` (HU9, HU10, HU12): 1:1 con `MantenimientoProgramado`, horas reales, firma, evidencias multipart y costos congelados.
+  - `InsumoUtilizado` (HU11): insumos/repuestos consumidos en la ejecución con costos unitarios y totales.
+  - `TareaPendiente` (HU13): registro obligatorio de tareas no ejecutadas con categoría (`MotivoNoEjecucion`) o hallazgos.
+  - Enums: `MotivoNoEjecucion`.
+- **Sprint 4+ models** (órdenes de trabajo, alertas preventivas) se vincularán a `MantenimientoProgramado` y `Equipo`.
 
 ## Frontend architecture
 
 React 18 + Vite 6 + React Router **v7** + Tailwind + axios. No TypeScript, no external state library.
 
-- **Auth state** — `src/context/AuthContext.jsx` holds `usuario` and mirrors it + JWT into `localStorage` (`thi_token`, `thi_usuario`).
-- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`.
+- **Auth state** — `src/context/AuthContext.jsx` holds `usuario` y mirrors it + JWT into `localStorage` (`thi_token`, `thi_usuario`).
+- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`.
 - **Routing** — `src/App.jsx`. `<ProtectedRoute>` guards routes; live pages:
   - `/equipos` (listado), `/equipos/:id` (detalle), `/equipos/nuevo` + `/equipos/:id/editar` (admin).
-  - `/mantenimiento` (Sprint 2):
-    - Admin: pestañas `Cronograma` (HU5, HU7) y `Tareas y planes` (HU4, HU6).
-    - Técnico: vista directa `Mis Tareas` (HU8).
+  - `/mantenimiento`:
+    - Admin: pestañas `Cronograma` (HU5, HU7) y `Tareas y planes` (HU4, HU6). Incluye acceso en modo lectura a `HojaEjecucionModal`.
+    - Técnico: vista directa `Mis Tareas` (HU8) con acciones para iniciar, registrar ejecución y ver resumen (`HojaEjecucionModal`, `ResumenEjecucion`).
 - **Deliberately stubbed** — `/dashboard`, `/ordenes-trabajo`, `/alertas`, `/reportes` all render `<Proximamente titulo=... sprint=... />`. **Do not build these out until their respective sprint arrives.**
 
-## Guidelines for Sprint 3 (Next Step)
+## Guidelines for Sprint 4 (Next Step)
 
-When working on **Sprint 3 (Ejecución del Mantenimiento)**:
-1. **HU9 (Formulario de registro)**: El técnico reporta la ejecución de un `MantenimientoProgramado` pasando su estado a `EN_EJECUCION` y luego `COMPLETADO` o `NO_EJECUTADO`.
-2. **HU10 (Horas trabajadas)**: Campo para registrar horas/minutos reales invertidos.
-3. **HU11 (Registro de insumos)**: Modelo de insumos/repuestos consumidos en la intervención.
-4. **HU12 (Cálculo de costos)**: Sumatoria automática de costo de mano de obra (horas * valor hora) + costo de insumos.
-5. **HU13 (Tareas pendientes)**: Registro de observaciones, averías adicionales o tareas postergadas.
+When working on **Sprint 4 (Órdenes de Trabajo y Alertas)**:
+1. **HU14 (Generación automática de OT)**: Materialización de OT formal a partir de `MantenimientoProgramado`.
+2. **HU15 (Exportación a PDF)**: Generador de plantilla PDF institucional para imprimir la OT.
+3. **HU16 (Historial de OT)**: Vista de consulta histórica con filtros.
+4. **HU17 (Alertas preventivas)**: Motor de notificaciones a 15, 8 y 1 día de anticipación a la fecha programada.
+5. **HU18 (Alertas de tareas vencidas)**: Notificación de mantenimientos en estado `PROGRAMADO` cuya fecha ya expiró.
 
 ## Documentación del Proyecto (`./docs/`)
 

@@ -60,21 +60,36 @@ npm run dev               # Servidor nodemon en http://localhost:4000
 | `PATCH` | `/api/mantenimientos-programados/:id/estado` | Autenticado | Actualizar estado del mantenimiento |
 | `PUT` | `/api/mantenimientos-programados/:id` | Administrador | Modificar fecha o prioridad de un mantenimiento programado |
 
+### Ejecución del Mantenimiento (Sprint 3 - HU9, HU10, HU11, HU12, HU13)
+| Método | Ruta | Rol requerido | Descripción / HU |
+|---|---|---|---|
+| `POST` | `/api/mantenimientos-programados/:id/ejecucion/iniciar` | Asignado / Admin | Iniciar ejecución, setea horaInicio, mant -> EN_EJECUCION, equipo -> EN_MANTENIMIENTO (HU9) |
+| `GET` | `/api/mantenimientos-programados/:id/ejecucion` | Asignado / Admin | Consultar registro de ejecución con insumos y pendientes (HU9) |
+| `GET` | `/api/ejecuciones` | Administrador | Listado de ejecuciones con filtros por técnico, equipo, resultado y fechas |
+| `GET` | `/api/ejecuciones/:id` | Asignado / Admin | Detalle de ejecución |
+| `PUT` | `/api/ejecuciones/:id` | Asignado / Admin | Actualizar datos y subir fotos de evidencia antes/después (multipart) (HU9, HU10) |
+| `POST` | `/api/ejecuciones/:id/insumos` | Asignado / Admin | Registrar insumo o repuesto utilizado con cantidad y costo (HU11) |
+| `DELETE` | `/api/ejecuciones/:id/insumos/:lineaId` | Asignado / Admin | Eliminar insumo registrado |
+| `POST` | `/api/ejecuciones/:id/pendientes` | Asignado / Admin | Registrar tarea pendiente o hallazgo con motivo obligatorio (HU13) |
+| `DELETE` | `/api/ejecuciones/:id/pendientes/:pendienteId` | Asignado / Admin | Eliminar tarea pendiente |
+| `POST` | `/api/ejecuciones/:id/finalizar` | Asignado / Admin | Cierre de ejecución (COMPLETADO o NO_EJECUTADO), calcula y congela costos, equipo -> ACTIVO (HU12) |
+
 ---
 
 ## Modelo de Datos (Prisma)
 
 - **Sprint 1**: `Usuario`, `Equipo`.
 - **Sprint 2**: `TareaMantenimiento`, `PlanMantenimiento`, `MantenimientoProgramado`.
-- **Enums**: `Rol`, `TipoActivo`, `EstadoEquipo`, `ResponsableMantenimiento`, `FrecuenciaMantenimiento`, `PrioridadMantenimiento`, `EstadoMantenimientoProgramado`, `OrigenMantenimiento`.
+- **Sprint 3**: `RegistroEjecucion`, `InsumoUtilizado`, `TareaPendiente`.
+- **Enums**: `Rol`, `TipoActivo`, `EstadoEquipo`, `ResponsableMantenimiento`, `FrecuenciaMantenimiento`, `PrioridadMantenimiento`, `EstadoMantenimientoProgramado`, `OrigenMantenimiento`, `MotivoNoEjecucion`.
 
 ---
 
-## Preparación para Sprint 3 (Ejecución del Mantenimiento)
+## Preparación para Sprint 4 (Órdenes de Trabajo y Alertas)
 
-En el Sprint 3 (HU9, HU10, HU11, HU12, HU13) se incorporará:
-1. **Ejecución de Mantenimiento**: Registro del técnico al ejecutar la tarea, marcándola en `EN_EJECUCION` y `COMPLETADO`.
-2. **Horas Trabajadas (HU10)**: Registro de tiempo real invertido vs. tiempo estimado.
-3. **Insumos y Repuestos (HU11)**: Catálogo y consumo de repuestos en el mantenimiento.
-4. **Cálculo de Costos (HU12)**: Costos combinados de mano de obra y materiales.
-5. **Tareas Pendientes (HU13)**: Registro de hallazgos y no conformidades encontradas durante la intervención.
+En el Sprint 4 (HU14, HU15, HU16, HU17, HU18) se incorporará:
+1. **Generación automática de OT (HU14)**: Creación formal de la Orden de Trabajo a partir de las tareas del cronograma.
+2. **Exportación de OT en PDF (HU15)**: Generador de documentos PDF con formato hospitalario oficial.
+3. **Historial de OT (HU16)**: Consulta y trazabilidad histórica de todas las órdenes emitidas.
+4. **Alertas preventivas automáticas (HU17)**: Sistema de notificaciones previas a la fecha programada (15 días, 8 días y 1 día antes).
+5. **Alertas de tareas vencidas (HU18)**: Detección y notificación automática de atrasos en mantenimientos.
