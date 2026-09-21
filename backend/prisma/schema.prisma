@@ -3,10 +3,10 @@
 // Sprint 1 · Gestión de Equipos y Acceso — HU1, HU2, HU3, HU24
 // Sprint 2 · Planificación del Mantenimiento — HU4, HU5, HU6, HU7, HU8
 // Sprint 3 · Ejecución del Mantenimiento — HU9, HU10, HU11, HU12, HU13
+// Sprint 4 · Órdenes de Trabajo y Alertas — HU14, HU15, HU16, HU17, HU18
 // ============================================================================
-// Los modelos de Sprint 4 en adelante (OrdenDeTrabajo, Alerta) se añaden en
-// sus respectivos sprints, con relación hacia Equipo, Usuario y los modelos
-// de mantenimiento y ejecución ya definidos aquí.
+// Los modelos de Sprint 5 (indicadores y reportes) se apoyan en los datos ya
+// persistidos aquí; no requieren tablas nuevas salvo agregados de consulta.
 
 generator client {
   provider = "prisma-client-js"
@@ -97,6 +97,29 @@ enum MotivoNoEjecucion {
   OTRO
 }
 
+// HU14 — ciclo de vida de una orden de trabajo.
+enum EstadoOrdenTrabajo {
+  EMITIDA
+  EN_PROCESO
+  CERRADA
+  CANCELADA
+}
+
+// HU17 — umbrales de anticipación del Product Backlog (15/8/1 días).
+// HU18 — VENCIDA para los mantenimientos cuya fecha expiró sin ejecutarse.
+enum TipoAlerta {
+  PREVENTIVA_15D
+  PREVENTIVA_8D
+  PREVENTIVA_1D
+  VENCIDA
+}
+
+enum EstadoAlerta {
+  PENDIENTE
+  LEIDA
+  RESUELTA
+}
+
 // ---------------------------------------------------------------------------
 // Modelos
 // ---------------------------------------------------------------------------
@@ -122,6 +145,11 @@ model Usuario {
 
   // Sprint 3 — Ejecución del mantenimiento
   ejecuciones RegistroEjecucion[] @relation("EjecucionTecnico")
+
+  // Sprint 4 — Órdenes de trabajo y alertas
+  ordenesAsignadas OrdenTrabajo[] @relation("OrdenTecnicoAsignado")
+  ordenesEmitidas  OrdenTrabajo[] @relation("OrdenEmitidaPor")
+  alertasRecibidas Alerta[]       @relation("AlertaTecnicoDestino")
 
   @@map("usuarios")
 }
@@ -167,6 +195,10 @@ model Equipo {
   // en una ejecución (vínculo opcional; ver InsumoUtilizado).
   insumosUtilizados InsumoUtilizado[] @relation("InsumoDeEquipo")
 
+  // Sprint 4 — Órdenes de trabajo y alertas del equipo
+  ordenesTrabajo OrdenTrabajo[]
+  alertas        Alerta[]
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -203,6 +235,7 @@ model TareaMantenimiento {
 
   planes                    PlanMantenimiento[]
   mantenimientosProgramados MantenimientoProgramado[]
+  ordenesTrabajo            OrdenTrabajo[]
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -286,6 +319,11 @@ model MantenimientoProgramado {
   reprogramadoDeId String?
   reprogramadoDe   MantenimientoProgramado?  @relation("Reprogramacion", fields: [reprogramadoDeId], references: [id])
   reprogramaciones MantenimientoProgramado[] @relation("Reprogramacion")
+
+  // Sprint 4 — la OT formal que materializa este mantenimiento (1:1) y las
+  // alertas preventivas / de vencimiento del motor de HU17-HU18.
+  ordenTrabajo OrdenTrabajo?
+  alertas      Alerta[]
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -405,4 +443,98 @@ model TareaPendiente {
   @@index([registroEjecucionId])
   @@index([resuelta])
   @@map("tareas_pendientes")
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 4 · Órdenes de Trabajo y Alertas — HU14, HU15, HU16, HU17, HU18
+// ---------------------------------------------------------------------------
+
+// HU14 — Orden de trabajo formal. Se materializa desde un MantenimientoProgramado
+// (1:1) o se emite por solicitud directa. El consecutivo institucional tiene la
+// forma OT-<anio>-<numero> y se reinicia cada anio, por eso se guardan anio y
+// numero por separado ademas del texto ya formateado.
+model OrdenTrabajo {
+  id String @id @default(uuid())
+
+  consecutivo String @unique
+  anio        Int
+  numero      Int
+
+  // Nulo cuando la OT nace de una solicitud directa (sin cronograma previo).
+  mantenimientoProgramadoId String?                  @unique
+  mantenimientoProgramado   MantenimientoProgramado? @relation(fields: [mantenimientoProgramadoId], references: [id])
+
+  equipoId String
+  equipo   Equipo @relation(fields: [equipoId], references: [id])
+
+  tareaId String?
+  tarea   TareaMantenimiento? @relation(fields: [tareaId], references: [id])
+
+  tecnicoAsignadoId String?
+  tecnicoAsignado   Usuario? @relation("OrdenTecnicoAsignado", fields: [tecnicoAsignadoId], references: [id])
+
+  emitidaPorId String
+  emitidaPor   Usuario @relation("OrdenEmitidaPor", fields: [emitidaPorId], references: [id])
+
+  descripcion String?
+  prioridad   PrioridadMantenimiento @default(MEDIA)
+  estado      EstadoOrdenTrabajo     @default(EMITIDA)
+  origen      OrigenMantenimiento    @default(MANUAL)
+
+  fechaEmision    DateTime  @default(now())
+  fechaProgramada DateTime?
+  fechaCierre     DateTime?
+
+  observacionesCierre String?
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([anio, numero])
+  @@index([estado])
+  @@index([equipoId])
+  @@index([tecnicoAsignadoId])
+  @@index([fechaEmision])
+  @@map("ordenes_trabajo")
+}
+
+// HU17 — alertas preventivas a 15, 8 y 1 dia de la fecha programada.
+// HU18 — alerta VENCIDA cuando la fecha paso y el mantenimiento sigue sin
+// ejecutarse. La unicidad (mantenimiento, tipo) hace idempotente al motor:
+// re-ejecutarlo no duplica alertas.
+model Alerta {
+  id String @id @default(uuid())
+
+  tipo   TipoAlerta
+  estado EstadoAlerta @default(PENDIENTE)
+
+  mantenimientoProgramadoId String
+  mantenimientoProgramado   MantenimientoProgramado @relation(fields: [mantenimientoProgramadoId], references: [id], onDelete: Cascade)
+
+  equipoId String
+  equipo   Equipo @relation(fields: [equipoId], references: [id])
+
+  // Tecnico al que le corresponde la alerta; nulo si aun no hay asignacion
+  // (en ese caso solo la ve la administracion).
+  tecnicoDestinoId String?
+  tecnicoDestino   Usuario? @relation("AlertaTecnicoDestino", fields: [tecnicoDestinoId], references: [id])
+
+  mensaje          String
+  // Snapshot de la fecha del mantenimiento, para ordenar sin joins.
+  fechaProgramada  DateTime
+  // 15, 8 o 1 para las preventivas; nulo para VENCIDA.
+  diasAnticipacion Int?
+
+  leidaEn    DateTime?
+  resueltaEn DateTime?
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([mantenimientoProgramadoId, tipo])
+  @@index([estado])
+  @@index([tipo])
+  @@index([tecnicoDestinoId])
+  @@index([fechaProgramada])
+  @@map("alertas")
 }
