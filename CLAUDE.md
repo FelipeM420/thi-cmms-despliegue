@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) and AI assistants wh
 ## What this is
 
 CMMS (preventive-maintenance system) for THI S.A.S. — a Universidad Mariana thesis project (Authors: Andrés Lombana & Sebastián Moreno).
-This repo covers **Sprint 1** (HU1-HU3, HU24), **Sprint 2** (HU4-HU8) and **Sprint 3** (HU9-HU13: Ejecución del mantenimiento).
-Next implementation phase is **Sprint 4** (HU14, HU15, HU16, HU17, HU18: Órdenes de trabajo y alertas).
+This repo covers **Sprint 1** (HU1-HU3, HU24), **Sprint 2** (HU4-HU8), **Sprint 3** (HU9-HU13: Ejecución del mantenimiento)
+and **Sprint 4** (HU14-HU18: Órdenes de trabajo y alertas).
+Next implementation phase is **Sprint 5** (HU19, HU20, HU21, HU22, HU23: Indicadores y reportes).
 Two independent npm projects, no workspace root: `backend/` (Node + Express + Prisma + PostgreSQL) and `frontend/` (React + Vite).
 
 ## Language convention
@@ -54,6 +55,10 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
 - **Audit log (Ley 1581)** — `src/middleware/auditoria.js` is global; on every `POST/PUT/PATCH/DELETE` it appends a JSON line to `src/logs/auditoria.log` on response `finish`. Keep working when adding write endpoints.
 - **Security posture (ISO 25010)** — `helmet`, `express-rate-limit` (10 login attempts / 15 min / IP on `/api/auth/login`), bcrypt password hashes, fail-fast boot if `JWT_SECRET` is missing/short.
 - **Frequency generation engine (HU6)** — `src/utils/frecuencias.js` calculates recurrence occurrences (DIARIA, SEMANAL, QUINCENAL, MENSUAL, etc.) starting from `fechaInicio` with an idempotent cutoff (`proximaGeneracionHasta`).
+- **Cost engine (HU12)** — `src/utils/costos.js`. Su espejo en cliente vive en `frontend/src/utils/mantenimiento.js`; si cambia uno, cambia el otro.
+- **Alert engine (HU17/HU18)** — `src/utils/alertas.js`. Por cada mantenimiento pendiente genera la alerta del **umbral más ajustado ya cruzado** (15 → 8 → 1 día), no las tres a la vez, y marca `VENCIDA` cuando la fecha pasó. Idempotente.
+- **PDF generator (HU15)** — `src/utils/pdfOrdenTrabajo.js` con `pdfkit` (sin navegador headless). El controlador canaliza el documento hacia la respuesta.
+- **Query validation** — `src/utils/consultas.js` valida los filtros de query con Zod (`enumOpc`, `fechaOpc`, `textoOpc`, `booleanoOpc`): un valor inválido responde 400, no un 500 opaco desde Prisma.
 
 ### Data model (`prisma/schema.prisma`)
 - **Sprint 1**: `Usuario`, `Equipo`.
@@ -67,29 +72,46 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
   - `InsumoUtilizado` (HU11): insumos/repuestos consumidos en la ejecución con costos unitarios y totales.
   - `TareaPendiente` (HU13): registro obligatorio de tareas no ejecutadas con categoría (`MotivoNoEjecucion`) o hallazgos.
   - Enums: `MotivoNoEjecucion`.
-- **Sprint 4+ models** (órdenes de trabajo, alertas preventivas) se vincularán a `MantenimientoProgramado` y `Equipo`.
+- **Sprint 4**:
+  - `OrdenTrabajo` (HU14, HU15, HU16): OT formal con consecutivo institucional `OT-<anio>-<0000>`
+    (numeración por año vía `@@unique([anio, numero])`). Relación 1:1 opcional con
+    `MantenimientoProgramado` (materialización desde el cronograma) o emisión directa sobre un `Equipo`.
+  - `Alerta` (HU17, HU18): alerta preventiva o de vencimiento. `@@unique([mantenimientoProgramadoId, tipo])`
+    hace idempotente al motor de generación.
+  - Enums: `EstadoOrdenTrabajo`, `TipoAlerta`, `EstadoAlerta`.
+- **Sprint 5** (indicadores y reportes) se apoya en los datos ya persistidos; no requiere tablas nuevas.
 
 ## Frontend architecture
 
 React 18 + Vite 6 + React Router **v7** + Tailwind + axios. No TypeScript, no external state library.
 
 - **Auth state** — `src/context/AuthContext.jsx` holds `usuario` y mirrors it + JWT into `localStorage` (`thi_token`, `thi_usuario`).
-- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`.
+- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`, `src/api/ordenesTrabajo.js`, `src/api/alertas.js`.
+- **Alertas context** — `src/context/AlertasContext.jsx` mantiene el contador de alertas pendientes (refresco cada 60 s) que consume el badge de la campana en `TopBar.jsx`. Las vistas llaman a `refrescar()` tras mutar alertas.
 - **Routing** — `src/App.jsx`. `<ProtectedRoute>` guards routes; live pages:
   - `/equipos` (listado), `/equipos/:id` (detalle), `/equipos/nuevo` + `/equipos/:id/editar` (admin).
   - `/mantenimiento`:
     - Admin: pestañas `Cronograma` (HU5, HU7) y `Tareas y planes` (HU4, HU6). Incluye acceso en modo lectura a `HojaEjecucionModal`.
     - Técnico: vista directa `Mis Tareas` (HU8) con acciones para iniciar, registrar ejecución y ver resumen (`HojaEjecucionModal`, `ResumenEjecucion`).
-- **Deliberately stubbed** — `/dashboard`, `/ordenes-trabajo`, `/alertas`, `/reportes` all render `<Proximamente titulo=... sprint=... />`. **Do not build these out until their respective sprint arrives.**
+  - `/ordenes-trabajo` (`OrdenesTrabajoView.jsx`): historial con filtros, emisión (admin), ciclo de vida y descarga de PDF (HU14-HU16). El técnico solo ve las órdenes que tiene asignadas.
+  - `/alertas` (`AlertasView.jsx`): centro de alertas con tarjetas por severidad, filtros, gestión de leídas/resueltas y disparo del motor (admin) (HU17-HU18).
+- **Deliberately stubbed** — `/dashboard` y `/reportes` all render `<Proximamente titulo=... sprint=... />`. **Do not build these out until their respective sprint arrives.**
 
-## Guidelines for Sprint 4 (Next Step)
+## Guidelines for Sprint 5 (Next Step)
 
-When working on **Sprint 4 (Órdenes de Trabajo y Alertas)**:
-1. **HU14 (Generación automática de OT)**: Materialización de OT formal a partir de `MantenimientoProgramado`.
-2. **HU15 (Exportación a PDF)**: Generador de plantilla PDF institucional para imprimir la OT.
-3. **HU16 (Historial de OT)**: Vista de consulta histórica con filtros.
-4. **HU17 (Alertas preventivas)**: Motor de notificaciones a 15, 8 y 1 día de anticipación a la fecha programada.
-5. **HU18 (Alertas de tareas vencidas)**: Notificación de mantenimientos en estado `PROGRAMADO` cuya fecha ya expiró.
+When working on **Sprint 5 (Indicadores y Reportes)** — reemplaza los stubs `/dashboard` y `/reportes`:
+1. **HU19 (Costos por mantenimiento)**: reporte trimestral y anual agregando `RegistroEjecucion.costoTotal`.
+2. **HU20 (Horas por equipo)**: ranking de equipos por `minutosTrabajados` acumulados.
+3. **HU21 (Áreas intervenidas)**: reporte por `Equipo.zona`.
+4. **HU22 (Consumo de recursos)**: agregados sobre `InsumoUtilizado` y mano de obra.
+5. **HU23 (Historial de registros)**: persistencia ya garantizada; falta la vista de consulta histórica.
+
+No se prevén tablas nuevas: los datos ya están en `RegistroEjecucion`, `InsumoUtilizado`, `OrdenTrabajo` y `Alerta`.
+El endpoint `GET /api/ejecuciones` (solo administrador, con filtros) es la base natural de estos reportes.
+
+### Deuda conocida al cerrar Sprint 4
+- El motor de alertas se dispara a mano desde la UI o con `POST /api/alertas/generar`; **no hay cron**. Para producción conviene una tarea programada diaria.
+- Pendiente de validar con el Product Owner (HU1): *"mantenimiento externo (registro costos y descripción de la tarea)"* y *"PDF en Word del manual"* (hoy solo se acepta PDF).
 
 ## Documentación del Proyecto (`./docs/`)
 

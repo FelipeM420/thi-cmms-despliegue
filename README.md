@@ -28,9 +28,19 @@ Diseño y reglas de negocio validados contra el prototipo Figma y el flujo BPMN 
   - Cálculo automático de costos totales (mano de obra según tiempo y técnicos + insumos) (HU12).
   - Registro de tareas pendientes, hallazgos y justificación obligatoria si no se ejecuta (HU13).
   - Integración con el estado del equipo (`EN_MANTENIMIENTO` -> `ACTIVO`).
-- [ ] **Sprint 4 · Órdenes de Trabajo y Alertas (HU14, HU15, HU16, HU17, HU18)** *(Próximo)*
-  - Generación de OT en PDF, alertas preventivas automáticas y control de vencimientos.
-- [ ] **Sprint 5 · Indicadores y Reportes (HU19, HU20, HU21, HU22, HU23)** *(Planificado)*
+- [x] **Sprint 4 · Órdenes de Trabajo y Alertas (HU14, HU15, HU16, HU17, HU18)**
+  - Emisión de órdenes de trabajo con consecutivo institucional `OT-<año>-<0000>`, desde el
+    cronograma (1:1 con el mantenimiento) o por solicitud directa (HU14).
+  - Ciclo de vida controlado: `EMITIDA` → `EN_PROCESO` → `CERRADA` / `CANCELADA` (HU14).
+  - Exportación de la OT en PDF institucional con cabecera THI, datos del equipo, tarea,
+    técnico, insumos consumidos y espacio para firmas y sello (HU15).
+  - Historial de órdenes con búsqueda por consecutivo y filtros por estado, equipo,
+    técnico y prioridad (HU16).
+  - Motor de alertas preventivas a 15, 8 y 1 día de la fecha programada (HU17).
+  - Alertas automáticas de mantenimientos vencidos sin ejecutar (HU18).
+  - Centro de alertas con severidad por color, filtros y gestión de leídas/resueltas,
+    más el contador de pendientes en la campana del encabezado.
+- [ ] **Sprint 5 · Indicadores y Reportes (HU19, HU20, HU21, HU22, HU23)** *(Próximo)*
   - Dashboard de disponibilidad de equipos biomédicos, costos y reportes ejecutivos.
 
 ---
