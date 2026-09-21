@@ -12,6 +12,8 @@ const tareasMantenimientoRoutes = require('./routes/tareasMantenimiento.routes')
 const planesMantenimientoRoutes = require('./routes/planesMantenimiento.routes');
 const mantenimientosProgramadosRoutes = require('./routes/mantenimientosProgramados.routes');
 const ejecucionesRoutes = require('./routes/ejecuciones.routes');
+const ordenesTrabajoRoutes = require('./routes/ordenesTrabajo.routes');
+const alertasRoutes = require('./routes/alertas.routes');
 const { registrarAuditoria } = require('./middleware/auditoria');
 
 // ISO 25010 (Seguridad) — fail-fast: si falta un secreto de firma robusto,
@@ -50,7 +52,7 @@ const limitadorLogin = rateLimit({
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/api/health', (req, res) => {
-  res.json({ estado: 'ok', servicio: 'thi-cmms-backend', sprints: [1, 2, 3] });
+  res.json({ estado: 'ok', servicio: 'thi-cmms-backend', sprints: [1, 2, 3, 4] });
 });
 
 app.use('/api/auth/login', limitadorLogin);
@@ -65,6 +67,10 @@ app.use('/api/mantenimientos-programados', mantenimientosProgramadosRoutes);
 
 // Sprint 3 — Ejecución del mantenimiento (HU9, HU10, HU11, HU12, HU13)
 app.use('/api/ejecuciones', ejecucionesRoutes);
+
+// Sprint 4 — Ordenes de trabajo y alertas (HU14, HU15, HU16, HU17, HU18)
+app.use('/api/ordenes-trabajo', ordenesTrabajoRoutes);
+app.use('/api/alertas', alertasRoutes);
 
 // Manejador de errores de multer y otros errores no capturados en rutas
 // (evita que un archivo inválido, p. ej., tumbe el proceso sin respuesta).
