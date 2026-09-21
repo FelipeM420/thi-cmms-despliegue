@@ -37,11 +37,33 @@ export const MOTIVOS_NO_EJECUCION = [
   ['OTRO', 'Otro'],
 ];
 
+// HU11 — unidades de medida para insumos y repuestos (lista cerrada para que
+// la cantidad y la unidad no se mezclen en un mismo campo de texto libre).
+export const UNIDADES_INSUMO = [
+  ['UNIDAD', 'Unidad'],
+  ['KIT', 'Kit'],
+  ['CAJA', 'Caja'],
+  ['PAR', 'Par'],
+  ['JUEGO', 'Juego'],
+  ['ROLLO', 'Rollo'],
+  ['BOLSA', 'Bolsa'],
+  ['METRO', 'Metro'],
+  ['LITRO', 'Litro'],
+  ['GALON', 'Galón'],
+  ['KILOGRAMO', 'Kilogramo'],
+  ['GRAMO', 'Gramo'],
+  ['GLOBAL', 'Global'],
+];
+
 const mapaDe = (pares) => Object.fromEntries(pares);
 export const ETIQUETA_FRECUENCIA = mapaDe(FRECUENCIAS);
 export const ETIQUETA_PRIORIDAD = mapaDe(PRIORIDADES);
 export const ETIQUETA_ESTADO = mapaDe(ESTADOS_MANTENIMIENTO);
 export const ETIQUETA_MOTIVO = mapaDe(MOTIVOS_NO_EJECUCION);
+const ETIQUETAS_UNIDAD = mapaDe(UNIDADES_INSUMO);
+
+// Tolera valores heredados que no estén en la lista (se muestran tal cual).
+export const etiquetaUnidad = (u) => (u ? ETIQUETAS_UNIDAD[u] || u : '—');
 
 export const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MESES = [

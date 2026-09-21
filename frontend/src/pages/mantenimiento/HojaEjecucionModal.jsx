@@ -34,6 +34,8 @@ import {
   formatearFecha,
   formatearMoneda,
   isoAInputLocal,
+  UNIDADES_INSUMO,
+  etiquetaUnidad,
 } from '../../utils/mantenimiento';
 
 const input =
@@ -390,29 +392,70 @@ function ArchivoEvidencia({ etiqueta, file, urlActual, onChange }) {
 }
 
 // --- HU11 — insumos -----------------------------------------------------
+// Cantidad y unidad son campos independientes (antes compartían celda y se
+// veían como "4 4"). Solo se aceptan números en cantidad/costo y una unidad de
+// la lista cerrada; el costo total es derivado, nunca se digita.
+const SOLO_NUMERO = /^\d*[.,]?\d*$/;
+const aNumero = (v) => Number(String(v).replace(',', '.'));
+
 function SeccionInsumos({ ejecucion, equiposInsumo, ocupado, onAdd, onDelete }) {
-  const VACIO = { equipoInsumoId: '', descripcion: '', cantidad: '', unidad: '', costoUnitario: '' };
+  const VACIO = { equipoInsumoId: '', descripcion: '', cantidad: '', unidad: 'UNIDAD', costoUnitario: '' };
   const [fila, setFila] = useState(VACIO);
+  const [tocado, setTocado] = useState({});
   const set = (k, v) => setFila((f) => ({ ...f, [k]: v }));
+  const marcar = (k) => setTocado((t) => ({ ...t, [k]: true }));
+
+  // Solo dígitos y un separador decimal: no entra texto ni signos.
+  const setNumero = (k, v) => {
+    if (v === '' || SOLO_NUMERO.test(v)) set(k, v);
+  };
 
   function elegirCatalogo(id) {
     const eq = equiposInsumo.find((e) => e.id === id);
     setFila((f) => ({ ...f, equipoInsumoId: id, descripcion: eq ? eq.nombre : f.descripcion }));
   }
 
+  // Validación por tipo de dato, campo a campo.
+  const errores = {};
+  if (!fila.descripcion.trim()) errores.descripcion = 'Obligatoria.';
+  else if (fila.descripcion.trim().length > 200) errores.descripcion = 'Máximo 200 caracteres.';
+  if (fila.cantidad === '') errores.cantidad = 'Obligatoria.';
+  else if (!Number.isFinite(aNumero(fila.cantidad)) || aNumero(fila.cantidad) <= 0)
+    errores.cantidad = 'Debe ser mayor a 0.';
+  if (!fila.unidad) errores.unidad = 'Obligatoria.';
+  if (
+    fila.costoUnitario !== '' &&
+    (!Number.isFinite(aNumero(fila.costoUnitario)) || aNumero(fila.costoUnitario) < 0)
+  )
+    errores.costoUnitario = 'No puede ser negativo.';
+
+  const valido = Object.keys(errores).length === 0;
+
+  // Costo total de la línea en curso: solo lectura, espejo del cálculo del backend.
+  const totalLinea =
+    valido && fila.cantidad !== '' && fila.costoUnitario !== ''
+      ? aNumero(fila.cantidad) * aNumero(fila.costoUnitario)
+      : null;
+
   async function agregar() {
+    setTocado({ descripcion: true, cantidad: true, unidad: true, costoUnitario: true });
+    if (!valido || ocupado) return;
     const payload = {
       descripcion: fila.descripcion.trim(),
-      cantidad: Number(fila.cantidad),
+      cantidad: aNumero(fila.cantidad),
+      unidad: fila.unidad,
     };
     if (fila.equipoInsumoId) payload.equipoInsumoId = fila.equipoInsumoId;
-    if (fila.unidad) payload.unidad = fila.unidad;
-    if (fila.costoUnitario !== '') payload.costoUnitario = Number(fila.costoUnitario);
+    if (fila.costoUnitario !== '') payload.costoUnitario = aNumero(fila.costoUnitario);
     const e = await onAdd(payload);
-    if (e) setFila(VACIO);
+    if (e) {
+      setFila(VACIO);
+      setTocado({});
+    }
   }
 
-  const puedeAgregar = fila.descripcion.trim() && Number(fila.cantidad) > 0 && !ocupado;
+  const err = (k) => (tocado[k] && errores[k] ? errores[k] : null);
+  const claseCampo = (k) => `${input} ${err(k) ? 'border-red-300 focus:ring-red-500' : ''}`;
 
   return (
     <section>
@@ -421,21 +464,35 @@ function SeccionInsumos({ ejecucion, equiposInsumo, ocupado, onAdd, onDelete }) 
       </h4>
 
       {ejecucion.insumos.length > 0 && (
-        <div className="mb-3 overflow-hidden rounded-lg border border-slate-200">
+        <div className="mb-3 overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-400">
+                <th className="px-3 py-2 font-medium">DESCRIPCIÓN</th>
+                <th className="px-3 py-2 text-right font-medium">CANTIDAD</th>
+                <th className="px-3 py-2 font-medium">UNIDAD</th>
+                <th className="px-3 py-2 text-right font-medium">COSTO UNIT.</th>
+                <th className="px-3 py-2 text-right font-medium">TOTAL</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
             <tbody>
               {ejecucion.insumos.map((i) => (
                 <tr key={i.id} className="border-b border-slate-50 last:border-0">
                   <td className="px-3 py-2 text-slate-700">{i.descripcion}</td>
-                  <td className="px-3 py-2 text-slate-500">
-                    {Number(i.cantidad)} {i.unidad || ''}
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{Number(i.cantidad)}</td>
+                  <td className="px-3 py-2 text-slate-600">{etiquetaUnidad(i.unidad)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                    {formatearMoneda(i.costoUnitario)}
                   </td>
-                  <td className="px-3 py-2 text-slate-500">{formatearMoneda(i.costoUnitario)}</td>
-                  <td className="px-3 py-2 font-medium text-slate-700">{formatearMoneda(i.costoLinea)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">
+                    {formatearMoneda(i.costoLinea)}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     <button
                       onClick={() => onDelete(i.id)}
                       disabled={ocupado}
+                      title="Quitar insumo"
                       className="text-slate-400 hover:text-red-600 disabled:opacity-50"
                     >
                       <Trash2 size={15} />
@@ -448,31 +505,95 @@ function SeccionInsumos({ ejecucion, equiposInsumo, ocupado, onAdd, onDelete }) 
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
-        {equiposInsumo.length > 0 && (
-          <select className={`${input} md:col-span-2`} value={fila.equipoInsumoId} onChange={(e) => elegirCatalogo(e.target.value)}>
-            <option value="">Del catálogo…</option>
-            {equiposInsumo.map((e) => (
-              <option key={e.id} value={e.id}>{e.referencia} · {e.nombre}</option>
-            ))}
-          </select>
-        )}
-        <input
-          className={`${input} ${equiposInsumo.length > 0 ? 'md:col-span-2' : 'md:col-span-3'}`}
-          placeholder="Descripción"
-          value={fila.descripcion}
-          onChange={(e) => set('descripcion', e.target.value)}
-        />
-        <input className={input} type="number" min="0" step="any" placeholder="Cant." value={fila.cantidad} onChange={(e) => set('cantidad', e.target.value)} />
-        <input className={input} placeholder="Unidad" value={fila.unidad} onChange={(e) => set('unidad', e.target.value)} />
-        <input className={input} type="number" min="0" placeholder="Costo unit." value={fila.costoUnitario} onChange={(e) => set('costoUnitario', e.target.value)} />
-        <button
-          onClick={agregar}
-          disabled={!puedeAgregar}
-          className="rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          Agregar
-        </button>
+      {/* Alta de línea — un campo por dato, con su tipo y su validación. */}
+      <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-12">
+          {equiposInsumo.length > 0 && (
+            <div className="col-span-2 md:col-span-3">
+              <label className="mb-1 block text-xs font-medium text-slate-500">Del catálogo</label>
+              <select className={input} value={fila.equipoInsumoId} onChange={(e) => elegirCatalogo(e.target.value)}>
+                <option value="">Opcional…</option>
+                {equiposInsumo.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.referencia} · {e.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className={equiposInsumo.length > 0 ? 'col-span-2 md:col-span-3' : 'col-span-2 md:col-span-6'}>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Descripción *</label>
+            <input
+              className={claseCampo('descripcion')}
+              maxLength={200}
+              placeholder="Ej. Filtro de aire"
+              value={fila.descripcion}
+              onChange={(e) => set('descripcion', e.target.value)}
+              onBlur={() => marcar('descripcion')}
+            />
+            {err('descripcion') && <p className="mt-1 text-xs text-red-600">{err('descripcion')}</p>}
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-500">Cantidad *</label>
+            <input
+              className={`${claseCampo('cantidad')} text-right tabular-nums`}
+              inputMode="decimal"
+              placeholder="0"
+              value={fila.cantidad}
+              onChange={(e) => setNumero('cantidad', e.target.value)}
+              onBlur={() => marcar('cantidad')}
+            />
+            {err('cantidad') && <p className="mt-1 text-xs text-red-600">{err('cantidad')}</p>}
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-500">Unidad *</label>
+            <select
+              className={claseCampo('unidad')}
+              value={fila.unidad}
+              onChange={(e) => set('unidad', e.target.value)}
+              onBlur={() => marcar('unidad')}
+            >
+              {UNIDADES_INSUMO.map(([val, txt]) => (
+                <option key={val} value={val}>
+                  {txt}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-500">Costo unitario</label>
+            <input
+              className={`${claseCampo('costoUnitario')} text-right tabular-nums`}
+              inputMode="decimal"
+              placeholder="0"
+              value={fila.costoUnitario}
+              onChange={(e) => setNumero('costoUnitario', e.target.value)}
+              onBlur={() => marcar('costoUnitario')}
+            />
+            {err('costoUnitario') && <p className="mt-1 text-xs text-red-600">{err('costoUnitario')}</p>}
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-slate-500">
+            Costo total de la línea:{' '}
+            <span className="font-semibold tabular-nums text-slate-800">
+              {totalLinea != null ? formatearMoneda(totalLinea) : '—'}
+            </span>
+            <span className="ml-1 text-xs text-slate-400">(cantidad × costo unitario)</span>
+          </p>
+          <button
+            onClick={agregar}
+            disabled={!valido || ocupado}
+            className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            Agregar insumo
+          </button>
+        </div>
       </div>
     </section>
   );

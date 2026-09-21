@@ -3,6 +3,7 @@ import PrioridadBadge from '../../components/PrioridadBadge';
 import EstadoMantenimientoBadge from '../../components/EstadoMantenimientoBadge';
 import {
   ETIQUETA_MOTIVO,
+  etiquetaUnidad,
   formatearFecha,
   formatearFechaHora,
   formatearHora,
@@ -106,20 +107,24 @@ export default function ResumenEjecucion({ ejecucion }) {
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
                   <th className="px-3 py-2 font-medium">DESCRIPCIÓN</th>
-                  <th className="px-3 py-2 font-medium">CANT.</th>
-                  <th className="px-3 py-2 font-medium">UNIT.</th>
-                  <th className="px-3 py-2 font-medium">SUBTOTAL</th>
+                  <th className="px-3 py-2 text-right font-medium">CANTIDAD</th>
+                  <th className="px-3 py-2 font-medium">UNIDAD</th>
+                  <th className="px-3 py-2 text-right font-medium">COSTO UNIT.</th>
+                  <th className="px-3 py-2 text-right font-medium">TOTAL</th>
                 </tr>
               </thead>
               <tbody>
                 {ejecucion.insumos.map((i) => (
                   <tr key={i.id} className="border-b border-slate-50 last:border-0">
                     <td className="px-3 py-2 text-slate-700">{i.descripcion}</td>
-                    <td className="px-3 py-2 text-slate-600">
-                      {Number(i.cantidad)} {i.unidad || ''}
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">{Number(i.cantidad)}</td>
+                    <td className="px-3 py-2 text-slate-600">{etiquetaUnidad(i.unidad)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                      {formatearMoneda(i.costoUnitario)}
                     </td>
-                    <td className="px-3 py-2 text-slate-600">{formatearMoneda(i.costoUnitario)}</td>
-                    <td className="px-3 py-2 text-slate-700">{formatearMoneda(i.costoLinea)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">
+                      {formatearMoneda(i.costoLinea)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

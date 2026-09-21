@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Play, RotateCw, FileText } from 'lucide-react';
+import { CalendarClock, Play, RotateCw, FileText, Search, RotateCcw, X } from 'lucide-react';
 import PrioridadBadge from '../../components/PrioridadBadge';
 import EstadoMantenimientoBadge from '../../components/EstadoMantenimientoBadge';
 import HojaEjecucionModal from './HojaEjecucionModal';
 import { listarMisTareas } from '../../api/mantenimiento';
-import { claveFecha, formatearFecha, hoyISO } from '../../utils/mantenimiento';
+import { PRIORIDADES, claveFecha, formatearFecha, hoyISO } from '../../utils/mantenimiento';
 
 const FILTROS_ESTADO = [
   ['', 'Todas'],
@@ -25,6 +25,9 @@ export default function MisTareasView() {
   const [estado, setEstado] = useState('');
   const [hoja, setHoja] = useState(null);
 
+  // Filtros de cliente sobre las tareas ya traídas del servidor.
+  const [filtros, setFiltros] = useState({ buscar: '', equipoId: '', prioridad: '' });
+
   const recargar = useCallback(async () => {
     setCargando(true);
     setError('');
@@ -43,10 +46,40 @@ export default function MisTareasView() {
 
   const hoy = hoyISO();
 
+  // El desplegable se arma con las tareas del servidor, no con las ya
+  // filtradas en cliente, para poder saltar de un equipo a otro.
+  const equiposDeMisTareas = useMemo(() => {
+    const mapa = new Map();
+    for (const t of tareas) {
+      if (t.equipo && !mapa.has(t.equipo.id)) mapa.set(t.equipo.id, t.equipo);
+    }
+    return [...mapa.values()].sort((a, b) => a.referencia.localeCompare(b.referencia));
+  }, [tareas]);
+
+  const hayFiltros = Object.values(filtros).some((v) => v !== '');
+  const limpiarFiltros = () => setFiltros({ buscar: '', equipoId: '', prioridad: '' });
+
+  const tareasFiltradas = useMemo(() => {
+    return tareas.filter((t) => {
+      if (filtros.equipoId && t.equipoId !== filtros.equipoId) return false;
+      if (filtros.prioridad && t.prioridad !== filtros.prioridad) return false;
+      if (filtros.buscar) {
+        const q = filtros.buscar.toLowerCase().trim();
+        const enTarea = t.tarea?.nombre?.toLowerCase().includes(q);
+        const enRef = t.equipo?.referencia?.toLowerCase().includes(q);
+        const enEquipo = t.equipo?.nombre?.toLowerCase().includes(q);
+        const enZona = t.equipo?.zona?.toLowerCase().includes(q);
+        const enNotas = t.notas?.toLowerCase().includes(q);
+        if (!enTarea && !enRef && !enEquipo && !enZona && !enNotas) return false;
+      }
+      return true;
+    });
+  }, [tareas, filtros]);
+
   const grupos = useMemo(() => {
     const abiertas = (t) => !TERMINALES.includes(t.estado);
     const g = { vencidas: [], hoy: [], proximas: [], cerradas: [] };
-    for (const t of tareas) {
+    for (const t of tareasFiltradas) {
       const dia = claveFecha(t.fechaProgramada);
       if (!abiertas(t)) g.cerradas.push(t);
       else if (dia < hoy) g.vencidas.push(t);
@@ -56,7 +89,7 @@ export default function MisTareasView() {
     const porFecha = (a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada);
     Object.values(g).forEach((lista) => lista.sort(porFecha));
     return g;
-  }, [tareas, hoy]);
+  }, [tareasFiltradas, hoy]);
 
   const secciones = [
     ['Vencidas', grupos.vencidas, 'text-red-600'],
@@ -70,7 +103,15 @@ export default function MisTareasView() {
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-slate-900">Mis tareas asignadas</h2>
-          <p className="mt-0.5 text-sm text-slate-500">{tareas.length} tarea(s) de mantenimiento asignadas a ti</p>
+          <p className="mt-0.5 text-sm text-slate-500">
+            {hayFiltros ? (
+              <>
+                Mostrando <strong className="text-slate-800">{tareasFiltradas.length}</strong> de {tareas.length} tarea(s)
+              </>
+            ) : (
+              <>{tareas.length} tarea(s) de mantenimiento asignadas a ti</>
+            )}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {FILTROS_ESTADO.map(([v, txt]) => (
@@ -86,6 +127,62 @@ export default function MisTareasView() {
           ))}
         </div>
       </div>
+
+      {/* Filtros de mis tareas — mismo patrón que el cronograma del administrador. */}
+      {tareas.length > 0 && (
+        <div className="mb-5 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+              <Search size={15} className="text-slate-400" />
+              <input
+                value={filtros.buscar}
+                onChange={(e) => setFiltros((f) => ({ ...f, buscar: e.target.value }))}
+                placeholder="Buscar por tarea, equipo, zona o notas..."
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+              />
+              {filtros.buscar && (
+                <button onClick={() => setFiltros((f) => ({ ...f, buscar: '' }))} className="text-slate-400 hover:text-slate-600">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <select
+              value={filtros.equipoId}
+              onChange={(e) => setFiltros((f) => ({ ...f, equipoId: e.target.value }))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none hover:border-slate-300"
+            >
+              <option value="">Equipo: Todos</option>
+              {equiposDeMisTareas.map((eq) => (
+                <option key={eq.id} value={eq.id}>
+                  {eq.referencia} · {eq.nombre}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filtros.prioridad}
+              onChange={(e) => setFiltros((f) => ({ ...f, prioridad: e.target.value }))}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none hover:border-slate-300"
+            >
+              <option value="">Prioridad: Todas</option>
+              {PRIORIDADES.map(([val, txt]) => (
+                <option key={val} value={val}>{txt}</option>
+              ))}
+            </select>
+
+            {hayFiltros && (
+              <button
+                onClick={limpiarFiltros}
+                className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
+                title="Restablecer todos los filtros"
+              >
+                <RotateCcw size={13} /> Limpiar filtros
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
 
@@ -103,7 +200,16 @@ export default function MisTareasView() {
         </div>
       )}
 
-      {!cargando && tareas.length > 0 && (
+      {!cargando && tareas.length > 0 && tareasFiltradas.length === 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
+          <p className="text-sm text-slate-500">Ninguna tarea coincide con los filtros aplicados.</p>
+          <button onClick={limpiarFiltros} className="mt-2 text-sm font-medium text-blue-600">
+            Limpiar filtros
+          </button>
+        </div>
+      )}
+
+      {!cargando && tareasFiltradas.length > 0 && (
         <div className="flex flex-col gap-6">
           {secciones
             .filter(([, lista]) => lista.length > 0)

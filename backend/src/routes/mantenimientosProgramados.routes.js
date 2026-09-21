@@ -6,6 +6,7 @@ const {
   crear,
   actualizar,
   asignar,
+  reprogramar,
 } = require('../controllers/mantenimientosProgramados.controller');
 const {
   iniciar: iniciarEjecucion,
@@ -35,6 +36,10 @@ router.put('/:id', requiereRol('ADMINISTRADOR'), actualizar);
 
 // HU7 — asignar a un técnico.
 router.patch('/:id/asignar', requiereRol('ADMINISTRADOR'), asignar);
+
+// BPMN «Reprogramar mantenimiento» — clona una ocurrencia no ejecutada en una
+// nueva fecha, conservando la original cerrada como evidencia.
+router.post('/:id/reprogramar', requiereRol('ADMINISTRADOR'), reprogramar);
 
 // HU9 (Sprint 3) — el técnico asignado (o el admin) abre / consulta la
 // ejecución de este mantenimiento. El controlador de ejecuciones restringe

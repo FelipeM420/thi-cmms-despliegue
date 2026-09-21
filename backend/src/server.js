@@ -50,7 +50,7 @@ const limitadorLogin = rateLimit({
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/api/health', (req, res) => {
-  res.json({ estado: 'ok', servicio: 'thi-cmms-backend', sprint: 1 });
+  res.json({ estado: 'ok', servicio: 'thi-cmms-backend', sprints: [1, 2, 3] });
 });
 
 app.use('/api/auth/login', limitadorLogin);
