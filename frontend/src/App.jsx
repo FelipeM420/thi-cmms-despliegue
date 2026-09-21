@@ -6,6 +6,8 @@ import EquiposListado from './pages/EquiposListado';
 import EquipoForm from './pages/EquipoForm';
 import EquipoDetalle from './pages/EquipoDetalle';
 import Mantenimiento from './pages/Mantenimiento';
+import OrdenesTrabajoView from './pages/OrdenesTrabajoView';
+import AlertasView from './pages/AlertasView';
 import Proximamente from './pages/Proximamente';
 
 export default function App() {
@@ -26,10 +28,14 @@ export default function App() {
       {/* HU4–HU8 — Sprint 2: planificación del mantenimiento (rol-aware dentro del módulo) */}
       <Route path="/mantenimiento" element={<ProtectedRoute><Mantenimiento /></ProtectedRoute>} />
 
+      {/* HU14–HU16 — Sprint 4: órdenes de trabajo */}
+      <Route path="/ordenes-trabajo" element={<ProtectedRoute><OrdenesTrabajoView /></ProtectedRoute>} />
+
+      {/* HU17–HU18 — Sprint 4: alertas preventivas y vencidas */}
+      <Route path="/alertas" element={<ProtectedRoute><AlertasView /></ProtectedRoute>} />
+
       {/* Módulos de sprints siguientes — diseño ya validado en Figma */}
       <Route path="/dashboard" element={<ProtectedRoute><Proximamente titulo="Dashboard" sprint="Sprint 5" /></ProtectedRoute>} />
-      <Route path="/ordenes-trabajo" element={<ProtectedRoute><Proximamente titulo="Órdenes de Trabajo" sprint="Sprint 4" /></ProtectedRoute>} />
-      <Route path="/alertas" element={<ProtectedRoute><Proximamente titulo="Alertas" sprint="Sprint 4" /></ProtectedRoute>} />
       <Route path="/reportes" element={<ProtectedRoute><Proximamente titulo="Reportes" sprint="Sprint 5" /></ProtectedRoute>} />
 
       <Route path="*" element={<Navigate to={usuario ? '/equipos' : '/login'} replace />} />
