@@ -5,7 +5,14 @@
 // `finalizar` (que congela los costos y fija el estado terminal).
 const { z } = require('zod');
 const prisma = require('../config/prisma');
-const { PRIORIDADES, MOTIVOS_NO_EJECUCION, RESULTADOS_EJECUCION } = require('../utils/enums');
+const {
+  PRIORIDADES,
+  ESTADOS_MANTENIMIENTO,
+  MOTIVOS_NO_EJECUCION,
+  RESULTADOS_EJECUCION,
+  UNIDADES_INSUMO,
+} = require('../utils/enums');
+const { textoOpc, fechaOpc, enumOpc, booleanoOpc } = require('../utils/consultas');
 const { calcularMinutosTrabajados, calcularCostoLinea, calcularCostoEjecucion } = require('../utils/costos');
 
 // --- Helpers de validación (los campos de multipart llegan como texto) ------
@@ -33,14 +40,43 @@ const actualizarSchema = z.object({
   firmaTecnico: opcTexto,
 });
 
-// HU11 — línea de insumo / consumible / repuesto.
+// HU11 — línea de insumo / consumible / repuesto. Tipos estrictos por campo:
+// la cantidad debe ser numérica y > 0, la unidad una de la lista cerrada, y
+// el costo unitario un monto >= 0. `costoLinea` NO se acepta del cliente: es
+// un valor derivado (cantidad × costo unitario) que calcula el servidor.
 const insumoSchema = z.object({
-  descripcion: z.string().min(1, 'La descripción del insumo es obligatoria.'),
+  descripcion: z
+    .string({ invalid_type_error: 'La descripción del insumo debe ser texto.' })
+    .trim()
+    .min(1, 'La descripción del insumo es obligatoria.')
+    .max(200, 'La descripción del insumo no puede superar los 200 caracteres.'),
   equipoInsumoId: opcTexto,
-  cantidad: z.coerce.number().positive('La cantidad debe ser mayor a cero.'),
-  unidad: opcTexto,
-  costoUnitario: opcNumNoNeg,
-  costoLinea: opcNumNoNeg,
+  cantidad: z.preprocess(
+    vacioAUndefined,
+    z.coerce
+      .number({ invalid_type_error: 'La cantidad debe ser un número.' })
+      .finite('La cantidad debe ser un número válido.')
+      .positive('La cantidad debe ser mayor a cero.')
+      .max(1000000, 'La cantidad supera el máximo permitido (1.000.000).')
+  ),
+  unidad: z.preprocess(
+    vacioAUndefined,
+    z
+      .enum(UNIDADES_INSUMO, {
+        errorMap: () => ({
+          message: `La unidad debe ser una de: ${UNIDADES_INSUMO.join(', ')}.`,
+        }),
+      })
+      .optional()
+  ),
+  costoUnitario: z.preprocess(
+    vacioAUndefined,
+    z.coerce
+      .number({ invalid_type_error: 'El costo unitario debe ser un número.' })
+      .finite('El costo unitario debe ser un número válido.')
+      .nonnegative('El costo unitario no puede ser negativo.')
+      .optional()
+  ),
 });
 
 // HU13 — hallazgo / tarea pendiente (motivo obligatorio).
@@ -61,6 +97,16 @@ const finalizarSchema = z.object({
   valorHoraManoObra: opcNumNoNeg,
   motivoNoEjecucion: opcTexto,
   categoriaNoEjecucion: z.preprocess(vacioAUndefined, z.enum(MOTIVOS_NO_EJECUCION).optional()),
+});
+
+// Filtros de query validados (400 en vez de 500 ante un valor inválido).
+const filtrosEjecucionesSchema = z.object({
+  tecnico: textoOpc,
+  equipo: textoOpc,
+  estado: enumOpc(ESTADOS_MANTENIMIENTO, 'estado'),
+  finalizada: booleanoOpc('finalizada'),
+  desde: fechaOpc('desde'),
+  hasta: fechaOpc('hasta'),
 });
 
 const includeEjecucion = {
@@ -222,12 +268,16 @@ async function obtenerPorMantenimiento(req, res) {
 // GET /api/ejecuciones?tecnico=&equipo=&estado=&finalizada=&desde=&hasta=
 // Base para los reportes de Sprint 5 — solo ADMINISTRADOR (aplicado en la ruta).
 async function listar(req, res) {
-  try {
-    const { tecnico, equipo, estado, finalizada, desde, hasta } = req.query;
+  const filtros = filtrosEjecucionesSchema.safeParse(req.query);
+  if (!filtros.success) {
+    return res.status(400).json({ error: filtros.error.issues[0].message });
+  }
+  const { tecnico, equipo, estado, finalizada, desde, hasta } = filtros.data;
 
+  try {
     const rangoFecha = {};
-    if (desde) rangoFecha.gte = new Date(String(desde));
-    if (hasta) rangoFecha.lte = new Date(String(hasta));
+    if (desde) rangoFecha.gte = desde;
+    if (hasta) rangoFecha.lte = hasta;
 
     const ejecuciones = await prisma.registroEjecucion.findMany({
       where: {
@@ -328,6 +378,7 @@ async function agregarInsumo(req, res) {
         return res.status(404).json({ error: 'El insumo del catálogo indicado no existe.' });
       }
     }
+    // Derivado, nunca recibido del cliente (HU12).
     datos.costoLinea = calcularCostoLinea(datos);
 
     await prisma.insumoUtilizado.create({ data: { ...datos, registroEjecucionId: ejecucion.id } });
@@ -361,10 +412,10 @@ async function actualizarInsumo(req, res) {
         return res.status(404).json({ error: 'El insumo del catálogo indicado no existe.' });
       }
     }
+    // Se recalcula con los valores resultantes; es siempre derivado (HU12).
     datos.costoLinea = calcularCostoLinea({
       cantidad: datos.cantidad ?? linea.cantidad,
       costoUnitario: datos.costoUnitario ?? linea.costoUnitario,
-      costoLinea: datos.costoLinea,
     });
 
     await prisma.insumoUtilizado.update({ where: { id: linea.id }, data: datos });
@@ -532,8 +583,17 @@ async function finalizar(req, res) {
         data: { estado: resultado },
       }),
     ];
-    // Decisión 6 — el equipo deja de estar en mantenimiento al cerrar el ciclo.
-    if (equipoEstado === 'EN_MANTENIMIENTO') {
+    // Decisión 6 — el equipo deja de estar en mantenimiento al cerrar el ciclo,
+    // pero solo si no le queda otra intervención abierta (un mismo equipo puede
+    // tener varios mantenimientos programados en paralelo).
+    const otrasEnEjecucion = await prisma.mantenimientoProgramado.count({
+      where: {
+        equipoId,
+        estado: 'EN_EJECUCION',
+        id: { not: ejecucion.mantenimientoProgramadoId },
+      },
+    });
+    if (equipoEstado === 'EN_MANTENIMIENTO' && otrasEnEjecucion === 0) {
       operaciones.push(prisma.equipo.update({ where: { id: equipoId }, data: { estado: 'ACTIVO' } }));
     }
 

@@ -1,5 +1,7 @@
 const { z } = require('zod');
 const prisma = require('../config/prisma');
+const { TIPOS_ACTIVO, ESTADOS_EQUIPO } = require('../utils/enums');
+const { textoOpc, enumOpc } = require('../utils/consultas');
 
 // Corresponde exactamente a los campos del formulario "Nuevo equipo" ya
 // validado en el prototipo Figma (pantalla 04 · Equipos · Nuevo).
@@ -20,11 +22,25 @@ const equipoSchema = z.object({
   tipoMantenimiento: z.enum(['INTERNO', 'EXTERNO']).default('INTERNO'),
 });
 
+// Filtros de query validados: un tipoActivo o estado inválido responde 400
+// en vez de reventar en Prisma con un 500 opaco.
+const filtrosEquipoSchema = z.object({
+  buscar: textoOpc,
+  zona: textoOpc,
+  tipoActivo: enumOpc(TIPOS_ACTIVO, 'tipoActivo'),
+  estado: enumOpc(ESTADOS_EQUIPO, 'estado'),
+});
+
 // GET /api/equipos — HU3: listado con filtros (pantalla "Equipos · Listado")
 // Soporta ?buscar=&zona=&tipoActivo=&estado=
 async function listar(req, res) {
+  const filtros = filtrosEquipoSchema.safeParse(req.query);
+  if (!filtros.success) {
+    return res.status(400).json({ error: filtros.error.issues[0].message });
+  }
+  const { buscar, zona, tipoActivo, estado } = filtros.data;
+
   try {
-    const { buscar, zona, tipoActivo, estado } = req.query;
 
     const equipos = await prisma.equipo.findMany({
       where: {
@@ -58,7 +74,31 @@ async function obtener(req, res) {
   try {
     const equipo = await prisma.equipo.findUnique({
       where: { id: req.params.id },
-      include: { registradoPor: { select: { nombre: true, email: true } } },
+      include: {
+        registradoPor: { select: { nombre: true, email: true } },
+        // Sprint 3 — historial de intervenciones del equipo (HU9–HU13). Se
+        // devuelve con la ficha para que la consulten ambos roles: el endpoint
+        // /api/ejecuciones es solo-administrador.
+        mantenimientosProgramados: {
+          orderBy: { fechaProgramada: 'desc' },
+          take: 60,
+          include: {
+            tarea: { select: { nombre: true } },
+            tecnicoAsignado: { select: { nombre: true } },
+            registroEjecucion: {
+              select: {
+                id: true,
+                fechaEjecucion: true,
+                minutosTrabajados: true,
+                costoTotal: true,
+                finalizadoEn: true,
+                motivoNoEjecucion: true,
+                categoriaNoEjecucion: true,
+              },
+            },
+          },
+        },
+      },
     });
     if (!equipo) {
       return res.status(404).json({ error: 'Equipo no encontrado.' });
@@ -126,6 +166,11 @@ async function actualizar(req, res) {
   } catch (error) {
     if (error.code === 'P2025') {
       return res.status(404).json({ error: 'Equipo no encontrado.' });
+    }
+    // Referencia o número de serie ya usados por otro equipo.
+    if (error.code === 'P2002') {
+      const campo = error.meta?.target?.[0] === 'numeroSerie' ? 'número de serie' : 'referencia';
+      return res.status(409).json({ error: `Ya existe otro equipo con esa ${campo}.` });
     }
     console.error('Error al actualizar equipo:', error);
     return res.status(500).json({ error: 'Error interno al actualizar el equipo.' });

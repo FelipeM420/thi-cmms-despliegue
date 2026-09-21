@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus, RefreshCw, Search, X } from 'lucide-react';
 import Modal from '../../components/Modal';
 import PrioridadBadge from '../../components/PrioridadBadge';
 import { listarEquipos } from '../../api/equipos';
@@ -58,6 +58,9 @@ function Tareas() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [editar, setEditar] = useState(undefined); // undefined = cerrado, null = nueva, obj = editar
+  const [buscar, setBuscar] = useState('');
+  const [filtroFrecuencia, setFiltroFrecuencia] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
 
   const recargar = useCallback(async () => {
     setCargando(true);
@@ -74,6 +77,23 @@ function Tareas() {
   useEffect(() => {
     recargar();
   }, [recargar]);
+
+  const tareasFiltradas = useMemo(() => {
+    return tareas.filter((t) => {
+      if (filtroFrecuencia && t.frecuenciaSugerida !== filtroFrecuencia) return false;
+      if (filtroEstado && String(t.activa) !== filtroEstado) return false;
+      if (buscar) {
+        const q = buscar.toLowerCase().trim();
+        const matchNombre = t.nombre.toLowerCase().includes(q);
+        const matchDesc = t.descripcion?.toLowerCase().includes(q);
+        const matchRecursos = t.recursos?.toLowerCase().includes(q);
+        if (!matchNombre && !matchDesc && !matchRecursos) return false;
+      }
+      return true;
+    });
+  }, [tareas, buscar, filtroFrecuencia, filtroEstado]);
+
+  const hayFiltros = buscar || filtroFrecuencia || filtroEstado;
 
   return (
     <div>
@@ -92,14 +112,64 @@ function Tareas() {
         </button>
       </div>
 
+      {/* Filtros de tareas */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex flex-1 min-w-[220px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <Search size={15} className="text-slate-400" />
+          <input
+            value={buscar}
+            onChange={(e) => setBuscar(e.target.value)}
+            placeholder="Buscar por actividad, descripción o recursos..."
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+          />
+          {buscar && (
+            <button onClick={() => setBuscar('')} className="text-slate-400 hover:text-slate-600">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <select
+          value={filtroFrecuencia}
+          onChange={(e) => setFiltroFrecuencia(e.target.value)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none hover:border-slate-300"
+        >
+          <option value="">Frecuencia: Todas</option>
+          {FRECUENCIAS.map(([val, txt]) => (
+            <option key={val} value={val}>{txt}</option>
+          ))}
+        </select>
+
+        <select
+          value={filtroEstado}
+          onChange={(e) => setFiltroEstado(e.target.value)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none hover:border-slate-300"
+        >
+          <option value="">Estado: Todos</option>
+          <option value="true">Activa</option>
+          <option value="false">Inactiva</option>
+        </select>
+
+        {hayFiltros && (
+          <button
+            onClick={() => { setBuscar(''); setFiltroFrecuencia(''); setFiltroEstado(''); }}
+            className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-100" 
+          >
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         {cargando && <p className="p-6 text-sm text-slate-400">Cargando…</p>}
-        {!cargando && tareas.length === 0 && (
-          <p className="p-6 text-sm text-slate-400">Aún no hay tareas en el catálogo.</p>
+        {!cargando && tareasFiltradas.length === 0 && (
+          <p className="p-6 text-sm text-slate-400">
+            {hayFiltros ? 'Ninguna tarea coincide con los filtros aplicados.' : 'Aún no hay tareas en el catálogo.'}
+          </p>
         )}
-        {!cargando && tareas.length > 0 && (
+        {!cargando && tareasFiltradas.length > 0 && (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
@@ -111,7 +181,7 @@ function Tareas() {
               </tr>
             </thead>
             <tbody>
-              {tareas.map((t) => (
+              {tareasFiltradas.map((t) => (
                 <tr
                   key={t.id}
                   onClick={() => setEditar(t)}
@@ -277,6 +347,10 @@ function Planes() {
   const [error, setError] = useState('');
   const [modalNuevo, setModalNuevo] = useState(false);
   const [generar, setGenerar] = useState(null); // plan sobre el que se generan ocurrencias
+  const [buscar, setBuscar] = useState('');
+  const [filtroEquipo, setFiltroEquipo] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
+  const [filtroFrecuencia, setFiltroFrecuencia] = useState('');
 
   const recargar = useCallback(async () => {
     setCargando(true);
@@ -299,6 +373,24 @@ function Planes() {
     listarTareas({ activa: 'true' }).then(setTareas).catch(() => {});
   }, []);
 
+  const planesFiltrados = useMemo(() => {
+    return planes.filter((p) => {
+      if (filtroEquipo && p.equipoId !== filtroEquipo) return false;
+      if (filtroEstado && String(p.activo) !== filtroEstado) return false;
+      if (filtroFrecuencia && p.frecuencia !== filtroFrecuencia) return false;
+      if (buscar) {
+        const q = buscar.toLowerCase().trim();
+        const matchTarea = p.tarea?.nombre?.toLowerCase().includes(q);
+        const matchEquipo = p.equipo?.nombre?.toLowerCase().includes(q);
+        const matchRef = p.equipo?.referencia?.toLowerCase().includes(q);
+        if (!matchTarea && !matchEquipo && !matchRef) return false;
+      }
+      return true;
+    });
+  }, [planes, buscar, filtroEquipo, filtroEstado, filtroFrecuencia]);
+
+  const hayFiltros = buscar || filtroEquipo || filtroEstado || filtroFrecuencia;
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -317,14 +409,75 @@ function Planes() {
         </button>
       </div>
 
+      {/* Filtros de planes */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex flex-1 min-w-[220px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <Search size={15} className="text-slate-400" />
+          <input
+            value={buscar}
+            onChange={(e) => setBuscar(e.target.value)}
+            placeholder="Buscar por equipo o tarea..."
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+          />
+          {buscar && (
+            <button onClick={() => setBuscar('')} className="text-slate-400 hover:text-slate-600">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <select
+          value={filtroEquipo}
+          onChange={(e) => setFiltroEquipo(e.target.value)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none hover:border-slate-300"
+        >
+          <option value="">Equipo: Todos</option>
+          {equipos.map((eq) => (
+            <option key={eq.id} value={eq.id}>{eq.referencia} · {eq.nombre}</option>
+          ))}
+        </select>
+
+        <select
+          value={filtroFrecuencia}
+          onChange={(e) => setFiltroFrecuencia(e.target.value)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none hover:border-slate-300"
+        >
+          <option value="">Frecuencia: Todas</option>
+          {FRECUENCIAS.map(([val, txt]) => (
+            <option key={val} value={val}>{txt}</option>
+          ))}
+        </select>
+
+        <select
+          value={filtroEstado}
+          onChange={(e) => setFiltroEstado(e.target.value)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none hover:border-slate-300"
+        >
+          <option value="">Estado: Todos</option>
+          <option value="true">Activo</option>
+          <option value="false">Inactivo</option>
+        </select>
+
+        {hayFiltros && (
+          <button
+            onClick={() => { setBuscar(''); setFiltroEquipo(''); setFiltroFrecuencia(''); setFiltroEstado(''); }}
+            className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-100" 
+          >
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         {cargando && <p className="p-6 text-sm text-slate-400">Cargando…</p>}
-        {!cargando && planes.length === 0 && (
-          <p className="p-6 text-sm text-slate-400">Aún no hay planes de frecuencia.</p>
+        {!cargando && planesFiltrados.length === 0 && (
+          <p className="p-6 text-sm text-slate-400">
+            {hayFiltros ? 'Ningún plan coincide con los filtros aplicados.' : 'Aún no hay planes de frecuencia.'}
+          </p>
         )}
-        {!cargando && planes.length > 0 && (
+        {!cargando && planesFiltrados.length > 0 && (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
@@ -339,7 +492,7 @@ function Planes() {
               </tr>
             </thead>
             <tbody>
-              {planes.map((p) => (
+              {planesFiltrados.map((p) => (
                 <tr key={p.id} className="border-b border-slate-50 last:border-0">
                   <td className="px-5 py-3.5 font-medium text-slate-900">
                     {p.equipo?.referencia} · {p.equipo?.nombre}

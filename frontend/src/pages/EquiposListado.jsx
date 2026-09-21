@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, RotateCcw } from 'lucide-react';
 import Layout from '../components/Layout';
 import EstadoBadge from '../components/EstadoBadge';
 import { listarEquipos } from '../api/equipos';
@@ -13,6 +13,9 @@ export default function EquiposListado() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [filtros, setFiltros] = useState({ buscar: '', zona: '', tipoActivo: '', estado: '' });
+  // Catálogo completo (sin filtrar) para los desplegables y el contador.
+  const [zonas, setZonas] = useState([]);
+  const [totalEquipos, setTotalEquipos] = useState(0);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -32,6 +35,18 @@ export default function EquiposListado() {
     cargar();
   }, [cargar]);
 
+  // Las zonas se cargan sin filtros: si se derivaran de `equipos` (que ya
+  // viene filtrado del backend), al elegir una zona el desplegable
+  // colapsaría a esa única opción y no se podría saltar a otra.
+  useEffect(() => {
+    listarEquipos()
+      .then((todos) => {
+        setZonas([...new Set(todos.map((e) => e.zona))].sort());
+        setTotalEquipos(todos.length);
+      })
+      .catch(() => {});
+  }, []);
+
   // Búsqueda por texto con debounce simple para no disparar una petición
   // por cada tecla — HU3 exige poder filtrar, no exige que sea instantáneo.
   useEffect(() => {
@@ -40,14 +55,21 @@ export default function EquiposListado() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtros.buscar]);
 
-  const zonas = [...new Set(equipos.map((e) => e.zona))].sort();
+  const hayFiltros = Object.values(filtros).some((v) => v !== '');
+  const limpiarFiltros = () => setFiltros({ buscar: '', zona: '', tipoActivo: '', estado: '' });
 
   return (
     <Layout titulo="Equipos">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-slate-900 font-bold text-xl">Tarjeta maestra de equipos</h2>
-          <p className="text-slate-500 text-sm mt-0.5">{equipos.length} activos registrados</p>
+          <p className="text-slate-500 text-sm mt-0.5">
+            {hayFiltros ? (
+              <>Mostrando <strong className="text-slate-800">{equipos.length}</strong> de {totalEquipos} activos</>
+            ) : (
+              <>{equipos.length} activos registrados</>
+            )}
+          </p>
         </div>
         {esAdministrador && (
           <button
@@ -100,6 +122,15 @@ export default function EquiposListado() {
           <option value="EN_MANTENIMIENTO">En mantenimiento</option>
           <option value="DADO_DE_BAJA">Dado de baja</option>
         </select>
+        {hayFiltros && (
+          <button
+            onClick={limpiarFiltros}
+            className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
+            title="Restablecer todos los filtros"
+          >
+            <RotateCcw size={13} /> Limpiar filtros
+          </button>
+        )}
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">

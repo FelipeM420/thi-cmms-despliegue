@@ -280,6 +280,13 @@ model MantenimientoProgramado {
   // Sprint 3 — la ejecución concreta de este mantenimiento (1:1).
   registroEjecucion RegistroEjecucion?
 
+  // Sprint 3 — ciclo del BPMN "Reprogramar mantenimiento": una ocurrencia que
+  // quedó NO_EJECUTADA no se reabre (su registro de ejecución ya es evidencia
+  // cerrada); se clona en una ocurrencia nueva que apunta aquí.
+  reprogramadoDeId String?
+  reprogramadoDe   MantenimientoProgramado?  @relation("Reprogramacion", fields: [reprogramadoDeId], references: [id])
+  reprogramaciones MantenimientoProgramado[] @relation("Reprogramacion")
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 

@@ -52,6 +52,13 @@ export async function actualizarMantenimiento(id, payload) {
   const { data } = await client.put(`/mantenimientos-programados/${id}`, payload);
   return data;
 }
+// BPMN «Reprogramar mantenimiento» — clona una ocurrencia no ejecutada en
+// una nueva fecha. Devuelve el mantenimiento NUEVO (otro id).
+export async function reprogramarMantenimiento(id, payload) {
+  const { data } = await client.post(`/mantenimientos-programados/${id}/reprogramar`, payload);
+  return data;
+}
+
 export async function asignarTecnico(id, tecnicoId) {
   const { data } = await client.patch(`/mantenimientos-programados/${id}/asignar`, { tecnicoId });
   return data;
