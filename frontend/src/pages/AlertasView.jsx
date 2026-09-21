@@ -31,7 +31,7 @@ const ESTILO_ESTADO = {
 // HU17 — Centro de alertas preventivas · HU18 — Mantenimientos vencidos.
 export default function AlertasView() {
   const { esAdministrador } = useAuth();
-  const { resumen, refrescar } = useAlertas();
+  const { resumen, actualizarResumen } = useAlertas();
   const [alertas, setAlertas] = useState([]);
   const [equipos, setEquipos] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -73,7 +73,7 @@ export default function AlertasView() {
       const r = await fn();
       if (mensajeOk) setAviso(typeof mensajeOk === 'function' ? mensajeOk(r) : mensajeOk);
       await recargar();
-      await refrescar();
+      await actualizarResumen();
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo completar la acción.');
     } finally {

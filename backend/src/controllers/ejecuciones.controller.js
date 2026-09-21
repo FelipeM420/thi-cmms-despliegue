@@ -582,6 +582,12 @@ async function finalizar(req, res) {
         where: { id: ejecucion.mantenimientoProgramadoId },
         data: { estado: resultado },
       }),
+      // HU17/HU18 — el mantenimiento ya se cerro: sus alertas pendientes
+      // dejan de tener sentido y se dan por resueltas.
+      prisma.alerta.updateMany({
+        where: { mantenimientoProgramadoId: ejecucion.mantenimientoProgramadoId, estado: { not:'RESUELTA' } },
+        data: { estado: 'RESUELTA', resueltaEn: new Date() },
+      }),
     ];
     // Decisión 6 — el equipo deja de estar en mantenimiento al cerrar el ciclo,
     // pero solo si no le queda otra intervención abierta (un mismo equipo puede

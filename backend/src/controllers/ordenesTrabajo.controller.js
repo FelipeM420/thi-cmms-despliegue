@@ -10,10 +10,6 @@ const { PRIORIDADES, ESTADOS_ORDEN_TRABAJO } = require('../utils/enums');
 const { textoOpc, fechaOpc, enumOpc } = require('../utils/consultas');
 const { generarPdfOrdenTrabajo } = require('../utils/pdfOrdenTrabajo');
 
-const vacioAUndefined = (v) => (v === '' || v === null || v === undefined ? undefined : v);
-const opcTexto = z.preprocess(vacioAUndefined, z.string().optional());
-const opcFecha = z.preprocess(vacioAUndefined, z.coerce.date().optional());
-
 // Transiciones válidas del ciclo de vida (HU14). Los estados terminales no
 // admiten salida: una OT cerrada o cancelada es evidencia.
 const TRANSICIONES = {
@@ -26,32 +22,32 @@ const TRANSICIONES = {
 const crearSchema = z
   .object({
     // Vía 1 — materializar una ocurrencia del cronograma.
-    mantenimientoProgramadoId: opcTexto,
+    mantenimientoProgramadoId: textoOpc,
     // Vía 2 — solicitud directa (exige equipo).
-    equipoId: opcTexto,
-    tareaId: opcTexto,
-    tecnicoAsignadoId: opcTexto,
-    descripcion: opcTexto,
-    prioridad: z.preprocess(vacioAUndefined, z.enum(PRIORIDADES).optional()),
-    fechaProgramada: opcFecha,
+    equipoId: textoOpc,
+    tareaId: textoOpc,
+    tecnicoAsignadoId: textoOpc,
+    descripcion: textoOpc,
+    prioridad: enumOpc(PRIORIDADES, 'prioridad'),
+    fechaProgramada: fechaOpc('fechaProgramada'),
   })
   .refine((d) => d.mantenimientoProgramadoId || d.equipoId, {
     message: 'Indica un mantenimiento programado o, para una solicitud directa, el equipo.',
   });
 
 const actualizarSchema = z.object({
-  descripcion: opcTexto,
-  tareaId: opcTexto,
-  tecnicoAsignadoId: opcTexto,
-  prioridad: z.preprocess(vacioAUndefined, z.enum(PRIORIDADES).optional()),
-  fechaProgramada: opcFecha,
+  descripcion: textoOpc,
+  tareaId: textoOpc,
+  tecnicoAsignadoId: textoOpc,
+  prioridad: enumOpc(PRIORIDADES, 'prioridad'),
+  fechaProgramada: fechaOpc('fechaProgramada'),
 });
 
 const estadoSchema = z.object({
   estado: z.enum(ESTADOS_ORDEN_TRABAJO, {
     errorMap: () => ({ message: `El estado debe ser uno de: ${ESTADOS_ORDEN_TRABAJO.join(', ')}.` }),
   }),
-  observacionesCierre: opcTexto,
+  observacionesCierre: textoOpc,
 });
 
 const filtrosSchema = z.object({
@@ -217,7 +213,10 @@ async function crear(req, res) {
       // técnico, prioridad y fecha de la ocurrencia.
       const mantenimiento = await prisma.mantenimientoProgramado.findUnique({
         where: { id: d.mantenimientoProgramadoId },
-        include: { ordenTrabajo: { select: { consecutivo: true } } },
+        include: {
+          ordenTrabajo: { select: { consecutivo: true } },
+          equipo: { select: { estado: true, referencia: true } },
+        },
       });
       if (!mantenimiento) {
         return res.status(404).json({ error: 'El mantenimiento programado indicado no existe.' });
@@ -229,6 +228,12 @@ async function crear(req, res) {
       }
       if (mantenimiento.estado === 'CANCELADO') {
         return res.status(409).json({ error: 'No se emite una orden sobre un mantenimiento cancelado.' });
+      }
+      // No se despacha trabajo sobre un activo retirado de servicio.
+      if (mantenimiento.equipo?.estado === 'DADO_DE_BAJA') {
+        return res.status(400).json({
+          error: `El equipo ${mantenimiento.equipo.referencia} está dado de baja; no se emiten órdenes sobre él.`,
+        });
       }
 
       datos = {
@@ -243,9 +248,17 @@ async function crear(req, res) {
       };
     } else {
       // Vía 2 — solicitud directa sobre un equipo.
-      const equipo = await prisma.equipo.findUnique({ where: { id: d.equipoId }, select: { id: true } });
+      const equipo = await prisma.equipo.findUnique({
+        where: { id: d.equipoId },
+        select: { id: true, estado: true, referencia: true },
+      });
       if (!equipo) {
         return res.status(404).json({ error: 'El equipo indicado no existe.' });
+      }
+      if (equipo.estado === 'DADO_DE_BAJA') {
+        return res.status(400).json({
+          error: `El equipo ${equipo.referencia} está dado de baja; no se emiten órdenes sobre él.`,
+        });
       }
       datos = {
         equipoId: d.equipoId,
@@ -259,8 +272,16 @@ async function crear(req, res) {
     }
 
     if (datos.tareaId) {
-      const tarea = await prisma.tareaMantenimiento.findUnique({ where: { id: datos.tareaId }, select: { id: true } });
+      const tarea = await prisma.tareaMantenimiento.findUnique({
+        where: { id: datos.tareaId },
+        select: { id: true, nombre: true, activa: true },
+      });
       if (!tarea) return res.status(404).json({ error: 'La tarea de mantenimiento indicada no existe.' });
+      if (tarea.activa === false) {
+        return res.status(400).json({
+          error: `La tarea «${tarea.nombre}» está inactiva en el catálogo; actívala o elige otra.`,
+        });
+      }
     }
     if (datos.tecnicoAsignadoId) {
       const tecnico = await prisma.usuario.findUnique({ where: { id: datos.tecnicoAsignadoId } });
@@ -336,6 +357,12 @@ async function cambiarEstado(req, res) {
     }
     if (!puedeVer(req.usuario, orden)) {
       return res.status(403).json({ error: 'No tienes acceso a esta orden de trabajo.' });
+    }
+
+    // Cancelar una OT es una decision administrativa: el tecnico asignado
+    // puede avanzarla o cerrarla, pero no anularla.
+    if (estado === 'CANCELADA' && req.usuario.rol !== 'ADMINISTRADOR') {
+      return res.status(403).json({ error: 'Solo los administradores pueden cancelar órdenes de trabajo.' });
     }
 
     const permitidos = TRANSICIONES[orden.estado] || [];

@@ -233,6 +233,23 @@ async function actualizar(req, res) {
       }
     }
 
+    // HU17/HU18 — al cancelar, las alertas pendientes de esa ocurrencia
+    // quedan sin objeto: se resuelven en la misma transaccion.
+    if (parseo.data.estado === 'CANCELADO') {
+      const [mantenimiento] = await prisma.$transaction([
+        prisma.mantenimientoProgramado.update({
+          where: { id: req.params.id },
+          data: parseo.data,
+          include,
+        }),
+        prisma.alerta.updateMany({
+          where: { mantenimientoProgramadoId: req.params.id, estado: { not: 'RESUELTA' } },
+          data: { estado: 'RESUELTA', resueltaEn: new Date() },
+        }),
+      ]);
+      return res.json(mantenimiento);
+    }
+
     const mantenimiento = await prisma.mantenimientoProgramado.update({
       where: { id: req.params.id },
       data: parseo.data,

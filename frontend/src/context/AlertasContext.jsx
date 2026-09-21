@@ -9,13 +9,13 @@ const AlertasContext = createContext(null);
 const INTERVALO_MS = 60000;
 
 // HU17/HU18 — mantiene el contador de alertas pendientes que consume la
-// campana del Layout. Las vistas llaman a `refrescar()` tras marcar o
+// campana del Layout. Las vistas llaman a `actualizarResumen()` tras marcar o
 // resolver alertas para que el badge quede al día sin recargar la página.
 export function AlertasProvider({ children }) {
   const { usuario } = useAuth();
   const [resumen, setResumen] = useState({ pendientes: 0, vencidas: 0, porTipo: {} });
 
-  const refrescar = useCallback(async () => {
+  const actualizarResumen = useCallback(async () => {
     if (!usuario) {
       setResumen({ pendientes: 0, vencidas: 0, porTipo: {} });
       return;
@@ -28,14 +28,14 @@ export function AlertasProvider({ children }) {
   }, [usuario]);
 
   useEffect(() => {
-    refrescar();
+    actualizarResumen();
     if (!usuario) return undefined;
-    const id = setInterval(refrescar, INTERVALO_MS);
+    const id = setInterval(actualizarResumen, INTERVALO_MS);
     return () => clearInterval(id);
-  }, [refrescar, usuario]);
+  }, [actualizarResumen, usuario]);
 
   return (
-    <AlertasContext.Provider value={{ resumen, refrescar }}>{children}</AlertasContext.Provider>
+    <AlertasContext.Provider value={{ resumen, actualizarResumen }}>{children}</AlertasContext.Provider>
   );
 }
 

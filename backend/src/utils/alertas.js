@@ -11,14 +11,25 @@ const { UMBRALES_ALERTA } = require('./enums');
 // admite alertas. Los de ejecución o cierre no generan nada.
 const ESTADOS_ALERTABLES = ['PROGRAMADO', 'ASIGNADO'];
 
-// Diferencia en días naturales entre dos fechas, ignorando la hora: lo que
-// importa es el día de calendario, no las horas exactas.
-function diasEntre(desde, hasta) {
-  const a = new Date(desde);
-  const b = new Date(hasta);
-  a.setHours(0, 0, 0, 0);
-  b.setHours(0, 0, 0, 0);
-  return Math.round((b.getTime() - a.getTime()) / 86400000);
+// `fechaProgramada` se persiste como fecha sin hora, es decir medianoche UTC.
+// Normalizarla con `setHours(0,0,0,0)` la convierte antes a hora local y en
+// una zona negativa (Colombia, UTC-5) cae en el día anterior: un
+// mantenimiento de hoy se leería como vencido. Por eso se compara el día de
+// calendario UTC de la fecha programada contra el día local de hoy.
+const claveUTC = (fecha) => new Date(fecha).toISOString().slice(0, 10);
+
+const claveLocal = (fecha) => {
+  const d = new Date(fecha);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+// Días naturales entre el día de hoy y la fecha programada.
+function diasEntre(hoy, fechaProgramada) {
+  const a = Date.parse(claveLocal(hoy) + 'T00:00:00.000Z');
+  const b = Date.parse(claveUTC(fechaProgramada) + 'T00:00:00.000Z');
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.round((b - a) / 86400000);
 }
 
 /**

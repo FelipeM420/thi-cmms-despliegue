@@ -15,6 +15,8 @@ const ejecucionesRoutes = require('./routes/ejecuciones.routes');
 const ordenesTrabajoRoutes = require('./routes/ordenesTrabajo.routes');
 const alertasRoutes = require('./routes/alertas.routes');
 const { registrarAuditoria } = require('./middleware/auditoria');
+const prisma = require('./config/prisma');
+const { generarAlertas } = require('./utils/alertas');
 
 // ISO 25010 (Seguridad) — fail-fast: si falta un secreto de firma robusto,
 // el servidor ni siquiera arranca en vez de correr con una llave débil por
@@ -79,7 +81,26 @@ app.use((err, req, res, next) => {
   res.status(400).json({ error: err.message || 'Error al procesar la solicitud.' });
 });
 
+// HU17/HU18 — el motor de alertas corre solo: una pasada al arrancar y
+// otra cada 12 horas. Es idempotente, asi que repetirlo no duplica nada.
+const INTERVALO_ALERTAS_MS = 12 * 60 * 60 * 1000;
+
+async function ejecutarMotorDeAlertas() {
+  try {
+    const { generadas, revisados } = await generarAlertas(prisma);
+    if (generadas > 0) {
+      console.log(`Motor de alertas: ${generadas} alerta(s) generada(s) de ${revisados} mantenimientos revisados.`);
+    }
+  } catch (error) {
+    // Un fallo del motor no debe tumbar el servidor: se reintenta al
+    // siguiente ciclo.
+    console.error('Motor de alertas: no se pudo completar la generacion automatica:', error.message);
+  }
+}
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`API del CMMS THI S.A.S. escuchando en http://localhost:${PORT}`);
+  ejecutarMotorDeAlertas();
+  setInterval(ejecutarMotorDeAlertas, INTERVALO_ALERTAS_MS);
 });
