@@ -26,9 +26,12 @@ const claveLocal = (fecha) => {
 
 // Días naturales entre el día de hoy y la fecha programada.
 function diasEntre(hoy, fechaProgramada) {
+  // Con una fecha inválida no hay respuesta honesta en días: NaN, nunca 0 (que
+  // significaría "es hoy" y dispararía una alerta para una fecha basura). Se
+  // valida antes de formatear porque toISOString() lanza RangeError.
+  if (Number.isNaN(new Date(hoy).getTime()) || Number.isNaN(new Date(fechaProgramada).getTime())) return NaN;
   const a = Date.parse(claveLocal(hoy) + 'T00:00:00.000Z');
   const b = Date.parse(claveUTC(fechaProgramada) + 'T00:00:00.000Z');
-  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
   return Math.round((b - a) / 86400000);
 }
 
@@ -42,6 +45,7 @@ function diasEntre(hoy, fechaProgramada) {
  */
 function alertaQueCorresponde(fechaProgramada, hoy = new Date()) {
   const diasRestantes = diasEntre(hoy, fechaProgramada);
+  if (Number.isNaN(diasRestantes)) return null;
 
   if (diasRestantes < 0) {
     return { tipo: 'VENCIDA', diasAnticipacion: null, diasRestantes };

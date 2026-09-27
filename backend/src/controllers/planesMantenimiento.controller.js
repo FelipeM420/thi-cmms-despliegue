@@ -5,7 +5,7 @@
 const { z } = require('zod');
 const prisma = require('../config/prisma');
 const { FRECUENCIAS, PRIORIDADES } = require('../utils/enums');
-const { generarOcurrencias } = require('../utils/frecuencias');
+const { calcularGeneracion } = require('../utils/frecuencias');
 
 // Horizonte por defecto de generación si no se pasa `?hasta=` (8 semanas,
 // alineado con la lógica semanal del Sprint Planning y del BPMN).
@@ -168,7 +168,11 @@ async function generar(req, res) {
       });
     }
 
-    const candidatas = generarOcurrencias({
+    const {
+      fechas: candidatas,
+      truncado,
+      generadoHasta,
+    } = calcularGeneracion({
       fechaInicio: plan.fechaInicio,
       frecuencia: plan.frecuencia,
       hasta,
@@ -202,14 +206,17 @@ async function generar(req, res) {
       }),
       prisma.planMantenimiento.update({
         where: { id: plan.id },
-        data: { proximaGeneracionHasta: hasta },
+        // Si se truncó en MAX_OCURRENCIAS, el plan solo queda cubierto hasta
+        // la última fecha creada: así la siguiente generación continúa ahí.
+        data: { proximaGeneracionHasta: generadoHasta },
       }),
     ]);
 
     return res.status(201).json({
       generadas: creadas.count,
       fechas: nuevas,
-      proximaGeneracionHasta: hasta,
+      proximaGeneracionHasta: generadoHasta,
+      truncado,
     });
   } catch (error) {
     console.error('Error al generar ocurrencias del plan de mantenimiento:', error);
