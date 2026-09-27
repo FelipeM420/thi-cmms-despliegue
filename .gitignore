@@ -34,6 +34,10 @@ backend/src/uploads/*
 # Permitir migraciones de base de datos de Prisma
 !**/prisma/migrations/**/*.sql
 
+# Configuración local de Claude Code (agentes, skills, reglas, ajustes): nunca se sube
+.claude/
+**/.claude/
+
 # Archivos del sistema operativo y editor
 .DS_Store
 Thumbs.db
