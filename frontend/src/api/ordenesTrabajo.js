@@ -23,6 +23,13 @@ export async function emitirOrden(payload) {
   return data;
 }
 
+// HU14 — dispara a mano la generación automática de la semana en curso (la misma
+// pasada que el servidor hace al arrancar y cada 12 horas). Solo administrador.
+export async function generarOrdenesSemana() {
+  const { data } = await client.post('/ordenes-trabajo/generar');
+  return data; // { generadas, yaTenian, fallidas, omitidas, consecutivos, revisados, semana }
+}
+
 export async function actualizarOrden(id, payload) {
   const { data } = await client.put(`/ordenes-trabajo/${id}`, payload);
   return data;

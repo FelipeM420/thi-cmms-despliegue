@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Search, RotateCcw, X, FileDown, ClipboardList } from 'lucide-react';
+import { Plus, Search, RotateCcw, X, FileDown, ClipboardList, RefreshCw } from 'lucide-react';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import PrioridadBadge from '../components/PrioridadBadge';
@@ -12,6 +12,7 @@ import {
   emitirOrden,
   cambiarEstadoOrden,
   descargarPdfOrden,
+  generarOrdenesSemana,
 } from '../api/ordenesTrabajo';
 import {
   ESTADOS_ORDEN_TRABAJO,
@@ -27,6 +28,8 @@ const input =
 const label = 'text-slate-700 text-sm font-medium block mb-1.5';
 
 // Transiciones válidas, espejo de las del backend (HU14).
+const MANTENIMIENTO_TERMINADO = ['COMPLETADO', 'NO_EJECUTADO', 'CANCELADO'];
+
 const TRANSICIONES = {
   EMITIDA: ['EN_PROCESO', 'CANCELADA'],
   EN_PROCESO: ['CERRADA', 'CANCELADA'],
@@ -44,6 +47,8 @@ export default function OrdenesTrabajoView() {
   const [error, setError] = useState('');
   const [filtros, setFiltros] = useState(FILTROS_VACIOS);
   const [modalEmitir, setModalEmitir] = useState(false);
+  const [generando, setGenerando] = useState(false);
+  const [aviso, setAviso] = useState('');
   const [detalle, setDetalle] = useState(null);
 
   const [equipos, setEquipos] = useState([]);
@@ -76,6 +81,30 @@ export default function OrdenesTrabajoView() {
     if (esAdministrador) listarTecnicos().then(setTecnicos).catch(() => {});
   }, [esAdministrador]);
 
+  // HU14 — genera las órdenes de los mantenimientos de la semana que aún no la tienen.
+  async function generarSemana() {
+    setError('');
+    setAviso('');
+    setGenerando(true);
+    try {
+      const r = await generarOrdenesSemana();
+      const omitidas = r.omitidas.length ? ` ${r.omitidas.length} omitida(s): equipo dado de baja, tarea inactiva o mantenimiento que cambió de estado.` : '';
+      setAviso(
+        r.generadas === 0
+          ? `No hay órdenes nuevas: los mantenimientos de la semana ya tienen la suya.${omitidas}`
+          : `${r.generadas} orden(es) generada(s): ${r.consecutivos.join(', ')}.${omitidas}`
+      );
+      if (r.fallidas > 0) {
+        setError(`${r.fallidas} orden(es) no se pudieron generar. Inténtalo de nuevo; si persiste, revisa el registro del servidor.`);
+      }
+      await recargar();
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudieron generar las órdenes de la semana.');
+    } finally {
+      setGenerando(false);
+    }
+  }
+
   async function descargar(orden) {
     setError('');
     try {
@@ -101,12 +130,22 @@ export default function OrdenesTrabajoView() {
           </p>
         </div>
         {esAdministrador && (
-          <button
-            onClick={() => setModalEmitir(true)}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-          >
-            <Plus size={16} /> Emitir orden
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={generarSemana}
+              disabled={generando}
+              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+              title="Emite la orden de los mantenimientos de esta semana (lunes a domingo) que aún no la tienen"
+            >
+              <RefreshCw size={15} className={generando ? 'animate-spin' : ''} /> Generar órdenes de la semana
+            </button>
+            <button
+              onClick={() => setModalEmitir(true)}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            >
+              <Plus size={16} /> Emitir orden
+            </button>
+          </div>
         )}
       </div>
 
@@ -189,7 +228,8 @@ export default function OrdenesTrabajoView() {
         </div>
       </div>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
+      {error && <div role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
+      {aviso && <div role="status" className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{aviso}</div>}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         {cargando && <p className="p-6 text-sm text-slate-400">Cargando…</p>}
@@ -313,7 +353,14 @@ function ModalEmitirOrden({ equipos, tecnicos, onClose, onEmitida }) {
   useEffect(() => {
     // Ocurrencias candidatas: las que aún esperan ejecución.
     Promise.all([listarCronograma({ estado: 'ASIGNADO' }), listarCronograma({ estado: 'PROGRAMADO' })])
-      .then(([a, p]) => setMantenimientos([...a, ...p].sort((x, y) => x.fechaProgramada.localeCompare(y.fechaProgramada))))
+      // Solo los que aún no tienen OT: el motor ya emite la de la semana en curso.
+      .then(([a, p]) =>
+        setMantenimientos(
+          [...a, ...p]
+            .filter((m) => !m.ordenTrabajo)
+            .sort((x, y) => x.fechaProgramada.localeCompare(y.fechaProgramada))
+        )
+      )
       .catch(() => {});
     listarTareas({ activa: 'true' }).then(setTareas).catch(() => {});
   }, []);
@@ -480,7 +527,12 @@ function ModalDetalleOrden({ orden, onClose, onDescargar, onCambio }) {
   const [cerrando, setCerrando] = useState(false);
   const [observaciones, setObservaciones] = useState('');
 
-  const siguientes = TRANSICIONES[orden.estado] || [];
+  // Mismo criterio que puedeCerrarManualmente (backend/src/utils/ordenesTrabajo.js): una OT del
+  // cronograma se cierra sola al finalizar la ejecución; a mano solo si su mantenimiento ya terminó.
+  const transiciones = TRANSICIONES[orden.estado] || [];
+  const cierreAutomatico =
+    Boolean(orden.mantenimientoProgramado) && !MANTENIMIENTO_TERMINADO.includes(orden.mantenimientoProgramado.estado);
+  const siguientes = transiciones.filter((estado) => !(estado === 'CERRADA' && cierreAutomatico));
   const fila = 'flex items-center justify-between py-2.5';
 
   async function transicionar(estado, obs) {
@@ -540,7 +592,9 @@ function ModalDetalleOrden({ orden, onClose, onDescargar, onCambio }) {
           <dt className="text-slate-500">Emitida</dt>
           <dd className="text-right text-slate-700">
             {formatearFechaHora(orden.fechaEmision)}
-            {orden.emitidaPor && <span className="block text-xs text-slate-400">por {orden.emitidaPor.nombre}</span>}
+            <span className="block text-xs text-slate-400">
+              {orden.emitidaPor ? `por ${orden.emitidaPor.nombre}` : 'por el sistema (automática)'}
+            </span>
           </dd>
         </div>
         <div className={fila}>
@@ -623,10 +677,15 @@ function ModalDetalleOrden({ orden, onClose, onDescargar, onCambio }) {
               ))}
             </div>
           )}
+          {cierreAutomatico && transiciones.includes('CERRADA') && (
+            <p className="mt-3 text-xs text-slate-500">
+              Esta orden se cierra sola cuando el técnico asignado finaliza la ejecución del mantenimiento.
+            </p>
+          )}
         </div>
       )}
 
-      {siguientes.length === 0 && (
+      {transiciones.length === 0 && (
         <p className="mt-5 rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-500">
           Esta orden está {(ETIQUETA_ESTADO_OT[orden.estado] || orden.estado).toLowerCase()}; es evidencia cerrada y
           no admite más cambios de estado.

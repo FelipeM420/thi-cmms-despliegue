@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Pencil, FileText, Search, RotateCcw, X } from 'lucide-react';
 import Layout from '../components/Layout';
 import EstadoBadge from '../components/EstadoBadge';
 import EstadoMantenimientoBadge from '../components/EstadoMantenimientoBadge';
+import ServiciosExternos from '../components/ServiciosExternos';
 import { obtenerEquipo } from '../api/equipos';
 import { useAuth } from '../context/AuthContext';
 import { ESTADOS_MANTENIMIENTO, formatearFecha, formatearMoneda } from '../utils/mantenimiento';
@@ -22,13 +23,22 @@ export default function EquipoDetalle() {
   const [equipo, setEquipo] = useState(null);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    obtenerEquipo(id)
-      .then(setEquipo)
-      .catch(() => setError('No se pudo cargar la ficha técnica de este equipo.'));
-  }, [id]);
+  const cargar = useCallback(
+    () =>
+      obtenerEquipo(id)
+        .then((datos) => {
+          setEquipo(datos);
+          setError('');
+        })
+        .catch(() => setError('No se pudo cargar la ficha técnica de este equipo.')),
+    [id]
+  );
 
-  if (error) {
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
+
+  if (error && !equipo) {
     return (
       <Layout titulo="Ficha técnica">
         <p className="text-red-600 text-sm">{error}</p>
@@ -56,6 +66,7 @@ export default function EquipoDetalle() {
 
   return (
     <Layout titulo="Ficha técnica del equipo">
+      {error && <p role="alert" className="mb-4 text-sm text-red-600">{error}</p>}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <h2 className="text-slate-900 font-bold text-xl">{equipo.nombre} · {equipo.referencia}</h2>
@@ -96,7 +107,10 @@ export default function EquipoDetalle() {
           )}
         </div>
 
-        <HistorialMantenimiento intervenciones={equipo.mantenimientosProgramados || []} />
+        <div className="flex min-w-0 flex-1 flex-col gap-5">
+          <HistorialMantenimiento intervenciones={equipo.mantenimientosProgramados || []} />
+          {esAdministrador && <ServiciosExternos equipo={equipo} onCambio={cargar} />}
+        </div>
       </div>
     </Layout>
   );
@@ -133,7 +147,7 @@ function HistorialMantenimiento({ intervenciones }) {
   );
 
   return (
-    <div className="flex-1 bg-white border border-slate-200 rounded-xl p-6">
+    <div className="bg-white border border-slate-200 rounded-xl p-6">
       <div className="flex items-start justify-between mb-4">
         <div>
           <h3 className="text-slate-900 font-bold text-sm">Historial de mantenimiento</h3>
@@ -145,7 +159,7 @@ function HistorialMantenimiento({ intervenciones }) {
         </div>
         {completadas.length > 0 && (
           <div className="text-right">
-            <p className="text-slate-400 text-xs">Costo acumulado</p>
+            <p className="text-slate-400 text-xs">Costo interno acumulado</p>
             <p className="text-slate-900 font-bold text-sm">{formatearMoneda(costoAcumulado)}</p>
           </div>
         )}
@@ -234,9 +248,14 @@ function HistorialMantenimiento({ intervenciones }) {
                     : '—'}
                 </td>
                 <td className="py-2.5 text-right text-slate-700">
-                  {m.registroEjecucion?.finalizadoEn
-                    ? formatearMoneda(m.registroEjecucion.costoTotal)
-                    : '—'}
+                  {m.registroEjecucion?.finalizadoEn ? (
+                    formatearMoneda(m.registroEjecucion.costoTotal)
+                  ) : m.servicioExterno ? (
+                    // HU1 — lo hizo un proveedor: su costo está en «Servicios externos».
+                    <span className="text-xs text-slate-500">Servicio externo · {m.servicioExterno.proveedor}</span>
+                  ) : (
+                    '—'
+                  )}
                 </td>
               </tr>
             ))}

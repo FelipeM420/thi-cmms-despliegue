@@ -159,7 +159,7 @@ export default function EquipoForm() {
             <label className="flex flex-col items-center justify-center gap-1.5 border border-dashed border-slate-300 rounded-lg py-8 cursor-pointer hover:border-blue-400 text-slate-400 text-xs">
               <Upload size={18} />
               {foto ? foto.name : 'PNG o JPG — clic para subir'}
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => setFoto(e.target.files[0])} />
+              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => setFoto(e.target.files[0])} />
             </label>
           </div>
           <div>

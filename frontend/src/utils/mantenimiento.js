@@ -164,12 +164,14 @@ export function calcularMinutosTrabajados({ horaInicio, horaFin, minutosPausa = 
   return Math.max(0, Math.round(brutos - (Number(minutosPausa) || 0)));
 }
 
+// Cada línea se redondea a centavos antes de sumar, igual que el backend
+// (utils/costos.js), para que la vista previa coincida con lo que se guarda.
 function costoDeLinea(linea) {
   if (linea.costoLinea !== undefined && linea.costoLinea !== null && linea.costoLinea !== '') {
-    return Number(linea.costoLinea) || 0;
+    return redondear2(Number(linea.costoLinea) || 0);
   }
   if (linea.cantidad == null || linea.cantidad === '' || linea.costoUnitario == null || linea.costoUnitario === '') return 0;
-  return (Number(linea.cantidad) || 0) * (Number(linea.costoUnitario) || 0);
+  return redondear2((Number(linea.cantidad) || 0) * (Number(linea.costoUnitario) || 0));
 }
 
 // HU12 — (Nº técnicos × horas × valor hora) + Σ insumos.

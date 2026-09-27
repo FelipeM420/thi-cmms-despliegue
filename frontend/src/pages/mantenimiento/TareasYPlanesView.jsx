@@ -688,6 +688,12 @@ function ModalGenerar({ plan, onClose, onGenerado }) {
           {resultado.generadas === 0
             ? 'No había ocurrencias nuevas para este periodo.'
             : `${resultado.generadas} ocurrencia(s) generada(s).`}
+          {resultado.truncado && (
+            <span className="mt-1 block text-amber-700">
+              Se alcanzó el máximo de ocurrencias por generación; el plan quedó generado hasta{' '}
+              {formatearFecha(resultado.proximaGeneracionHasta)}. Vuelve a generar para continuar.
+            </span>
+          )}
         </div>
       )}
 
