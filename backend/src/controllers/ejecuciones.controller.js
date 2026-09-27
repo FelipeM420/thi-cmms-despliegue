@@ -14,14 +14,55 @@ const {
 } = require('../utils/enums');
 const { textoOpc, fechaOpc, enumOpc, booleanoOpc } = require('../utils/consultas');
 const { calcularMinutosTrabajados, calcularCostoLinea, calcularCostoEjecucion } = require('../utils/costos');
+const { puedeOperarMantenimiento } = require('../utils/permisos');
+const { operacionesOrden } = require('../utils/ordenesTrabajo');
+const { resolverFirma, puedeCambiarFirma } = require('../utils/firmaConformidad');
+const {
+  MAX_MINUTOS,
+  MAX_TECNICOS,
+  MAX_MONTO,
+  montoCabe,
+  minutosEntre,
+  motivoCierreFueraDeLimites,
+} = require('../utils/limitesEjecucion');
 
 // --- Helpers de validación (los campos de multipart llegan como texto) ------
 const vacioAUndefined = (v) => (v === '' || v === null || v === undefined ? undefined : v);
 const opcTexto = z.preprocess(vacioAUndefined, z.string().optional());
 const opcFecha = z.preprocess(vacioAUndefined, z.coerce.date().optional());
-const opcEnteroNoNeg = z.preprocess(vacioAUndefined, z.coerce.number().int().nonnegative().optional());
-const opcEnteroPos = z.preprocess(vacioAUndefined, z.coerce.number().int().positive().optional());
-const opcNumNoNeg = z.preprocess(vacioAUndefined, z.coerce.number().nonnegative().optional());
+// Topes (utils/limitesEjecucion.js): un valor que no cabe en la columna responde 400, no 500.
+const opcMinutos = z.preprocess(
+  vacioAUndefined,
+  z.coerce
+    .number({ invalid_type_error: 'Los minutos deben ser un número.' })
+    .int('Los minutos deben ser un número entero.')
+    .nonnegative('Los minutos no pueden ser negativos.')
+    .max(MAX_MINUTOS, `Los minutos no pueden superar ${MAX_MINUTOS} (un mes de trabajo).`)
+    .optional()
+);
+const opcTecnicos = z.preprocess(
+  vacioAUndefined,
+  z.coerce
+    .number({ invalid_type_error: 'El número de técnicos debe ser un número.' })
+    .int('El número de técnicos debe ser un entero.')
+    .positive('Debe haber al menos un técnico.')
+    .max(MAX_TECNICOS, `El número de técnicos no puede superar ${MAX_TECNICOS}.`)
+    .optional()
+);
+const opcMonto = z.preprocess(
+  vacioAUndefined,
+  z.coerce
+    .number({ invalid_type_error: 'El valor debe ser un número.' })
+    .finite('El valor debe ser un número válido.')
+    .nonnegative('El valor no puede ser negativo.')
+    .max(MAX_MONTO, 'El valor supera el máximo que se puede registrar.')
+    .optional()
+);
+// En multipart el booleano llega como texto ('true' / 'false').
+const opcBooleano = z.preprocess(
+  (v) => (v === 'true' ? true : v === 'false' ? false : vacioAUndefined(v)),
+  z.boolean({ invalid_type_error: 'La firma de conformidad debe ser true o false.' }).optional()
+);
 
 const iniciarSchema = z.object({
   fechaEjecucion: opcFecha,
@@ -33,11 +74,14 @@ const actualizarSchema = z.object({
   fechaEjecucion: opcFecha,
   horaInicio: opcFecha,
   horaFin: opcFecha,
-  minutosPausa: opcEnteroNoNeg,
-  minutosTrabajados: opcEnteroNoNeg,
-  numeroTecnicos: opcEnteroPos,
+  minutosPausa: opcMinutos,
+  minutosTrabajados: opcMinutos,
+  numeroTecnicos: opcTecnicos,
   observaciones: opcTexto,
-  firmaTecnico: opcTexto,
+  // La firma NO se recibe como texto: el servidor la fija con el usuario
+  // autenticado y la hora real (utils/firmaConformidad.js). Un `firmaTecnico`
+  // enviado por un cliente se ignora.
+  firmaConforme: opcBooleano,
 });
 
 // HU11 — línea de insumo / consumible / repuesto. Tipos estrictos por campo:
@@ -75,9 +119,12 @@ const insumoSchema = z.object({
       .number({ invalid_type_error: 'El costo unitario debe ser un número.' })
       .finite('El costo unitario debe ser un número válido.')
       .nonnegative('El costo unitario no puede ser negativo.')
+      .max(MAX_MONTO, 'El costo unitario supera el máximo que se puede registrar.')
       .optional()
   ),
 });
+
+const MENSAJE_LINEA_EXCEDE = 'El costo de la línea (cantidad × costo unitario) supera el máximo que se puede registrar.';
 
 // HU13 — hallazgo / tarea pendiente (motivo obligatorio).
 const pendienteSchema = z.object({
@@ -94,7 +141,7 @@ const finalizarSchema = z.object({
   resultado: z.enum(RESULTADOS_EJECUCION, {
     errorMap: () => ({ message: 'El resultado debe ser COMPLETADO o NO_EJECUTADO.' }),
   }),
-  valorHoraManoObra: opcNumNoNeg,
+  valorHoraManoObra: opcMonto,
   motivoNoEjecucion: opcTexto,
   categoriaNoEjecucion: z.preprocess(vacioAUndefined, z.enum(MOTIVOS_NO_EJECUCION).optional()),
 });
@@ -129,12 +176,6 @@ const includeEjecucion = {
   pendientes: { orderBy: { creadoEn: 'asc' } },
 };
 
-// El administrador opera sobre cualquier ejecución; el técnico solo sobre las
-// de los mantenimientos que tiene asignados.
-function puedeOperar(usuario, mantenimiento) {
-  return usuario.rol === 'ADMINISTRADOR' || mantenimiento.tecnicoAsignadoId === usuario.sub;
-}
-
 // Carga el RegistroEjecucion de :id, aplica control de acceso y (opcional) el
 // candado de "ya finalizado". Devuelve null tras responder si algo falla.
 async function resolverEjecucion(req, res, { editable = false } = {}) {
@@ -147,7 +188,7 @@ async function resolverEjecucion(req, res, { editable = false } = {}) {
       res.status(404).json({ error: 'Registro de ejecución no encontrado.' });
       return null;
     }
-    if (!puedeOperar(req.usuario, ejecucion.mantenimientoProgramado)) {
+    if (!puedeOperarMantenimiento(req.usuario, ejecucion.mantenimientoProgramado)) {
       res.status(403).json({ error: 'No tienes acceso a este registro de ejecución.' });
       return null;
     }
@@ -187,7 +228,7 @@ async function iniciar(req, res) {
     if (!mantenimiento) {
       return res.status(404).json({ error: 'Mantenimiento programado no encontrado.' });
     }
-    if (!puedeOperar(req.usuario, mantenimiento)) {
+    if (!puedeOperarMantenimiento(req.usuario, mantenimiento)) {
       return res.status(403).json({ error: 'No tienes acceso a este mantenimiento.' });
     }
     if (!mantenimiento.tecnicoAsignadoId) {
@@ -222,6 +263,8 @@ async function iniciar(req, res) {
         where: { id: mantenimiento.id },
         data: { estado: 'EN_EJECUCION' },
       }),
+      // HU14 — la OT del mantenimiento pasa a EN_PROCESO junto con la ejecución.
+      ...operacionesOrden(prisma, mantenimiento.id, { tipo: 'EJECUCION_INICIADA' }),
     ];
     // Decisión 6 — al iniciar, el equipo pasa a EN_MANTENIMIENTO.
     if (mantenimiento.equipo.estado === 'ACTIVO') {
@@ -248,7 +291,7 @@ async function obtenerPorMantenimiento(req, res) {
     if (!mantenimiento) {
       return res.status(404).json({ error: 'Mantenimiento programado no encontrado.' });
     }
-    if (!puedeOperar(req.usuario, mantenimiento)) {
+    if (!puedeOperarMantenimiento(req.usuario, mantenimiento)) {
       return res.status(403).json({ error: 'No tienes acceso a este mantenimiento.' });
     }
     const ejecucion = await prisma.registroEjecucion.findUnique({
@@ -338,7 +381,15 @@ async function actualizar(req, res) {
   if (!ejecucion) return;
 
   try {
-    const datos = { ...parseo.data };
+    const { firmaConforme, ...campos } = parseo.data;
+    const datos = { ...campos };
+    const firma = resolverFirma({ firmaConforme, firmaActual: ejecucion.firmaTecnico, usuario: req.usuario });
+    if (firma !== undefined) {
+      if (!puedeCambiarFirma(req.usuario, ejecucion.mantenimientoProgramado)) {
+        return res.status(403).json({ error: 'La firma de conformidad solo la pone o la retira el técnico asignado.' });
+      }
+      datos.firmaTecnico = firma;
+    }
     if (req.files?.evidenciaAntes?.[0]) {
       datos.evidenciaAntesUrl = `/uploads/${req.files.evidenciaAntes[0].filename}`;
     }
@@ -350,6 +401,9 @@ async function actualizar(req, res) {
     const horaFin = datos.horaFin ?? ejecucion.horaFin;
     if (horaInicio && horaFin && new Date(horaFin) < new Date(horaInicio)) {
       return res.status(400).json({ error: 'La hora de finalización no puede ser anterior a la de inicio.' });
+    }
+    if (minutosEntre(horaInicio, horaFin) > MAX_MINUTOS) {
+      return res.status(400).json({ error: 'La jornada registrada (de la hora de inicio a la de fin) supera un mes; revisa las fechas.' });
     }
 
     await prisma.registroEjecucion.update({ where: { id: ejecucion.id }, data: datos });
@@ -380,6 +434,7 @@ async function agregarInsumo(req, res) {
     }
     // Derivado, nunca recibido del cliente (HU12).
     datos.costoLinea = calcularCostoLinea(datos);
+    if (!montoCabe(datos.costoLinea)) return res.status(400).json({ error: MENSAJE_LINEA_EXCEDE });
 
     await prisma.insumoUtilizado.create({ data: { ...datos, registroEjecucionId: ejecucion.id } });
     return devolverEjecucion(res, ejecucion.id, 201);
@@ -417,6 +472,7 @@ async function actualizarInsumo(req, res) {
       cantidad: datos.cantidad ?? linea.cantidad,
       costoUnitario: datos.costoUnitario ?? linea.costoUnitario,
     });
+    if (!montoCabe(datos.costoLinea)) return res.status(400).json({ error: MENSAJE_LINEA_EXCEDE });
 
     await prisma.insumoUtilizado.update({ where: { id: linea.id }, data: datos });
     return devolverEjecucion(res, ejecucion.id);
@@ -562,6 +618,9 @@ async function finalizar(req, res) {
       })),
     });
 
+    const fueraDeLimites = motivoCierreFueraDeLimites({ minutosTrabajados, costos: { costoManoObra, costoInsumos, costoTotal } });
+    if (fueraDeLimites) return res.status(400).json({ error: fueraDeLimites });
+
     const { id: equipoId, estado: equipoEstado } = ejecucion.mantenimientoProgramado.equipo;
 
     const operaciones = [
@@ -585,8 +644,15 @@ async function finalizar(req, res) {
       // HU17/HU18 — el mantenimiento ya se cerro: sus alertas pendientes
       // dejan de tener sentido y se dan por resueltas.
       prisma.alerta.updateMany({
-        where: { mantenimientoProgramadoId: ejecucion.mantenimientoProgramadoId, estado: { not:'RESUELTA' } },
+        where: { mantenimientoProgramadoId: ejecucion.mantenimientoProgramadoId, estado: { not: 'RESUELTA' } },
         data: { estado: 'RESUELTA', resueltaEn: new Date() },
+      }),
+      // HU14 — la OT del mantenimiento se cierra con la ejecución (completada
+      // o no: en ese caso queda el motivo en sus observaciones).
+      ...operacionesOrden(prisma, ejecucion.mantenimientoProgramadoId, {
+        tipo: 'EJECUCION_FINALIZADA',
+        resultado,
+        motivo: motivoNoEjecucion,
       }),
     ];
     // Decisión 6 — el equipo deja de estar en mantenimiento al cerrar el ciclo,

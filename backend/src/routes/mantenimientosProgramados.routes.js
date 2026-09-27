@@ -13,8 +13,11 @@ const {
   obtenerPorMantenimiento: obtenerEjecucion,
 } = require('../controllers/ejecuciones.controller');
 const { verificarToken, requiereRol } = require('../middleware/auth');
+const prisma = require('../config/prisma');
+const { crearRequiereConsentimiento } = require('../middleware/consentimiento');
 
 const router = express.Router();
+const requiereConsentimiento = crearRequiereConsentimiento(prisma);
 
 // HU5 (programar) · HU7 (asignar) · HU8 (ver asignadas).
 router.use(verificarToken);
@@ -44,7 +47,8 @@ router.post('/:id/reprogramar', requiereRol('ADMINISTRADOR'), reprogramar);
 // HU9 (Sprint 3) — el técnico asignado (o el admin) abre / consulta la
 // ejecución de este mantenimiento. El controlador de ejecuciones restringe
 // el acceso.
-router.post('/:id/ejecucion/iniciar', iniciarEjecucion);
+// Iniciar la ejecución exige haber aceptado el aviso de datos personales (Ley 1581).
+router.post('/:id/ejecucion/iniciar', requiereConsentimiento, iniciarEjecucion);
 router.get('/:id/ejecucion', obtenerEjecucion);
 
 module.exports = router;

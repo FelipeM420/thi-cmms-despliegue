@@ -1,6 +1,4 @@
 const express = require('express');
-const multer = require('multer');
-const path = require('path');
 const {
   listar,
   obtener,
@@ -13,35 +11,28 @@ const {
   eliminarPendiente,
   finalizar,
 } = require('../controllers/ejecuciones.controller');
+const prisma = require('../config/prisma');
 const { verificarToken, requiereRol } = require('../middleware/auth');
+const { crearSubida } = require('../middleware/subidaArchivos');
+const { crearAutorizadorEjecucion } = require('../middleware/autorizarEjecucion');
+const { crearRequiereConsentimiento } = require('../middleware/consentimiento');
 
 const router = express.Router();
 
 // HU9 — evidencia fotográfica antes / después. Mismo patrón que equipos.routes:
-// almacenamiento local, solo imágenes, 10 MB.
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, process.env.UPLOADS_DIR || 'src/uploads'),
-  filename: (req, file, cb) => {
-    const sufijoUnico = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + '-' + sufijoUnico + path.extname(file.originalname));
-  },
+// almacenamiento local, solo PNG o JPG, 10 MB.
+const subirEvidencias = crearSubida({
+  evidenciaAntes: { tipo: 'imagen', etiqueta: 'La evidencia fotográfica' },
+  evidenciaDespues: { tipo: 'imagen', etiqueta: 'La evidencia fotográfica' },
 });
 
-const soloImagenes = (req, file, cb) => {
-  if (!file.mimetype.startsWith('image/')) {
-    return cb(new Error('La evidencia fotográfica debe ser una imagen (PNG o JPG).'));
-  }
-  cb(null, true);
-};
+// Se autoriza ANTES de leer la subida: un usuario sin acceso a la ejecución no
+// llega a escribir archivos en disco.
+const autorizarEjecucion = crearAutorizadorEjecucion(prisma);
 
-const subirEvidencias = multer({
-  storage,
-  fileFilter: soloImagenes,
-  limits: { fileSize: 10 * 1024 * 1024 },
-}).fields([
-  { name: 'evidenciaAntes', maxCount: 1 },
-  { name: 'evidenciaDespues', maxCount: 1 },
-]);
+// Ley 1581 — la firma y las fotografías son datos personales: quien registra o
+// cierra una ejecución debe haber aceptado antes el aviso de tratamiento.
+const requiereConsentimiento = crearRequiereConsentimiento(prisma);
 
 router.use(verificarToken);
 
@@ -50,8 +41,8 @@ router.get('/', requiereRol('ADMINISTRADOR'), listar);
 
 // Detalle y edición: el controlador restringe a admin o técnico dueño.
 router.get('/:id', obtener);
-router.put('/:id', subirEvidencias, actualizar);
-router.post('/:id/finalizar', finalizar);
+router.put('/:id', autorizarEjecucion, requiereConsentimiento, ...subirEvidencias, actualizar);
+router.post('/:id/finalizar', requiereConsentimiento, finalizar);
 
 // HU11 — insumos / consumibles / repuestos.
 router.post('/:id/insumos', agregarInsumo);
