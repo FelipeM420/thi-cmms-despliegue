@@ -6,6 +6,7 @@ const {
   actualizar,
   cambiarEstado,
   descargarPdf,
+  generar,
 } = require('../controllers/ordenesTrabajo.controller');
 const { verificarToken, requiereRol } = require('../middleware/auth');
 
@@ -23,6 +24,8 @@ router.get('/:id/pdf', descargarPdf);
 
 // HU14 — emitir y editar: solo administrador.
 router.post('/', requiereRol('ADMINISTRADOR'), crear);
+// HU14 — generación automática de la semana (la misma pasada del servidor).
+router.post('/generar', requiereRol('ADMINISTRADOR'), generar);
 router.put('/:id', requiereRol('ADMINISTRADOR'), actualizar);
 
 // Ciclo de vida: el técnico asignado puede avanzar la suya (el controlador

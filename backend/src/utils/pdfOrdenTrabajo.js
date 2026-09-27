@@ -179,7 +179,7 @@ function generarPdfOrdenTrabajo(orden) {
     ['Fecha programada', fecha(orden.fechaProgramada)],
     ['Prioridad', ETIQUETAS_PRIORIDAD[orden.prioridad] || orden.prioridad],
     ['Origen', orden.origen === 'AUTOMATICO' ? 'Cronograma preventivo' : 'Solicitud directa'],
-    ['Emitida por', orden.emitidaPor?.nombre || '—'],
+    ['Emitida por', orden.emitidaPor?.nombre || (orden.origen === 'AUTOMATICO' ? 'Sistema THI-CMMS (automática)' : '—')],
     ['Técnico asignado', orden.tecnicoAsignado?.nombre || 'Sin asignar'],
   ]);
 

@@ -9,6 +9,14 @@ const prisma = require('../config/prisma');
 const { PRIORIDADES, ESTADOS_ORDEN_TRABAJO } = require('../utils/enums');
 const { textoOpc, fechaOpc, enumOpc } = require('../utils/consultas');
 const { generarPdfOrdenTrabajo } = require('../utils/pdfOrdenTrabajo');
+const { generarOrdenesAutomaticas } = require('../utils/ordenesAutomaticas');
+const { registrarEventoSistema } = require('../middleware/auditoria');
+const { asyncHandler } = require('../middleware/manejoErrores');
+const {
+  emitirConConsecutivo,
+  camposBloqueadosDeOrdenVinculada,
+  puedeCerrarManualmente,
+} = require('../utils/ordenesTrabajo');
 
 // Transiciones válidas del ciclo de vida (HU14). Los estados terminales no
 // admiten salida: una OT cerrada o cancelada es evidencia.
@@ -111,37 +119,6 @@ function filtroDeBusqueda(buscar) {
       { tecnicoAsignado: { nombre: { contains: q, mode: 'insensitive' } } },
     ],
   };
-}
-
-/**
- * Consecutivo institucional OT-<año>-<0000>, con numeración por año.
- * La unicidad (anio, numero) del modelo protege ante emisiones simultáneas;
- * si dos coinciden, se reintenta con el siguiente número.
- */
-async function emitirConConsecutivo(datos, intentos = 5) {
-  const anio = new Date().getFullYear();
-
-  for (let i = 0; i < intentos; i++) {
-    const ultima = await prisma.ordenTrabajo.findFirst({
-      where: { anio },
-      orderBy: { numero: 'desc' },
-      select: { numero: true },
-    });
-    const numero = (ultima?.numero || 0) + 1;
-    const consecutivo = `OT-${anio}-${String(numero).padStart(4, '0')}`;
-
-    try {
-      return await prisma.ordenTrabajo.create({
-        data: { ...datos, anio, numero, consecutivo },
-        include,
-      });
-    } catch (error) {
-      // Colisión de consecutivo: otro proceso tomó ese número, se reintenta.
-      if (error.code === 'P2002' && i < intentos - 1) continue;
-      throw error;
-    }
-  }
-  throw new Error('No se pudo asignar un consecutivo libre para la orden de trabajo.');
 }
 
 // GET /api/ordenes-trabajo — HU16. El técnico solo ve las suyas.
@@ -293,9 +270,17 @@ async function crear(req, res) {
       }
     }
 
-    const orden = await emitirConConsecutivo({ ...datos, emitidaPorId: req.usuario.sub });
+    // La comprobación de CANCELADO de arriba se repite dentro de la transacción que
+    // crea la OT: una cancelación simultánea no deja una OT abierta sobre ella.
+    const orden = await emitirConConsecutivo(
+      prisma,
+      { ...datos, emitidaPorId: req.usuario.sub },
+      { include, mantenimientoDebe: { estado: { not: 'CANCELADO' } } }
+    );
     return res.status(201).json(orden);
   } catch (error) {
+    // El mantenimiento ya tiene OT (otra emisión ganó la carrera): conflicto, no fallo interno.
+    if (error.status === 409) return res.status(409).json({ error: error.message });
     console.error('Error al emitir la orden de trabajo:', error);
     return res.status(500).json({ error: 'Error interno al emitir la orden de trabajo.' });
   }
@@ -311,7 +296,7 @@ async function actualizar(req, res) {
   try {
     const actual = await prisma.ordenTrabajo.findUnique({
       where: { id: req.params.id },
-      select: { estado: true },
+      select: { estado: true, mantenimientoProgramadoId: true },
     });
     if (!actual) {
       return res.status(404).json({ error: 'Orden de trabajo no encontrada.' });
@@ -319,6 +304,15 @@ async function actualizar(req, res) {
     if (['CERRADA', 'CANCELADA'].includes(actual.estado)) {
       return res.status(409).json({
         error: `Una orden ${actual.estado === 'CERRADA' ? 'cerrada' : 'cancelada'} no admite cambios.`,
+      });
+    }
+
+    // Una OT del cronograma sigue al mantenimiento programado: técnico, fecha,
+    // prioridad y tarea se cambian allá (HU5/HU7) y llegan aquí solos.
+    const bloqueados = actual.mantenimientoProgramadoId ? camposBloqueadosDeOrdenVinculada(parseo.data) : [];
+    if (bloqueados.length) {
+      return res.status(409).json({
+        error: `Esta orden proviene del cronograma: cambia ${bloqueados.join(', ')} desde el mantenimiento programado.`,
       });
     }
 
@@ -351,7 +345,10 @@ async function cambiarEstado(req, res) {
   const { estado, observacionesCierre } = parseo.data;
 
   try {
-    const orden = await prisma.ordenTrabajo.findUnique({ where: { id: req.params.id } });
+    const orden = await prisma.ordenTrabajo.findUnique({
+      where: { id: req.params.id },
+      include: { mantenimientoProgramado: { select: { estado: true } } },
+    });
     if (!orden) {
       return res.status(404).json({ error: 'Orden de trabajo no encontrada.' });
     }
@@ -371,6 +368,13 @@ async function cambiarEstado(req, res) {
         error: permitidos.length
           ? `Desde ${orden.estado} solo se puede pasar a: ${permitidos.join(' o ')}.`
           : `La orden está ${orden.estado.toLowerCase()} y no admite más cambios de estado.`,
+      });
+    }
+    // El cierre de una OT del cronograma lo hace el sistema al finalizar la
+    // ejecución del mantenimiento; a mano solo si ese ya terminó (datos previos).
+    if (estado === 'CERRADA' && !puedeCerrarManualmente(orden.mantenimientoProgramado)) {
+      return res.status(409).json({
+        error: 'Esta orden se cierra sola cuando el técnico asignado finaliza la ejecución del mantenimiento.',
       });
     }
     if (estado === 'CERRADA' && !observacionesCierre) {
@@ -418,4 +422,21 @@ async function descargarPdf(req, res) {
   }
 }
 
-module.exports = { listar, obtener, crear, actualizar, cambiarEstado, descargarPdf };
+// POST /api/ordenes-trabajo/generar — HU14, solo ADMINISTRADOR. Dispara a mano la
+// misma pasada que el servidor hace al arrancar y cada 12 horas: emite la OT de
+// los mantenimientos de la semana en curso que aún no la tienen. Idempotente.
+const generar = asyncHandler(async (req, res) => {
+  const resultado = await generarOrdenesAutomaticas(prisma, {
+    registrarEvento: registrarEventoSistema,
+    registrarError: (mensaje, error) => console.error(`${mensaje}:`, error.message),
+  });
+  return res.json({
+    ...resultado,
+    semana: {
+      desde: resultado.semana.desde.toISOString().slice(0, 10),
+      hasta: resultado.semana.hasta.toISOString().slice(0, 10),
+    },
+  });
+});
+
+module.exports = { listar, obtener, crear, actualizar, cambiarEstado, descargarPdf, generar };
