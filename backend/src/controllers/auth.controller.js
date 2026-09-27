@@ -2,6 +2,22 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const prisma = require('../config/prisma');
+const {
+  serializarCookieArchivos,
+  serializarCookieBorrada,
+  segundosRestantes,
+  cookieSegura,
+} = require('../utils/cookieArchivos');
+
+// Emite la cookie con la que el navegador pide fotos, manuales y evidencias
+// (no pueden llevar el encabezado Authorization). Dura lo mismo que el JWT.
+// `Secure` lo decide COOKIE_SECURE o, sin ella, NODE_ENV (utils/cookieArchivos.js).
+function emitirCookieArchivos(res, token, exp) {
+  res.setHeader(
+    'Set-Cookie',
+    serializarCookieArchivos(token, { maxAgeSegundos: segundosRestantes(exp), secure: cookieSegura() })
+  );
+}
 
 const loginSchema = z.object({
   email: z.string().email('Correo inválido.'),
@@ -36,6 +52,8 @@ async function login(req, res) {
       { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
     );
 
+    emitirCookieArchivos(res, token, jwt.decode(token).exp);
+
     return res.json({
       token,
       usuario: { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol },
@@ -56,6 +74,9 @@ async function me(req, res) {
     if (!usuario || !usuario.activo) {
       return res.status(401).json({ error: 'Sesión no válida.' });
     }
+    // Renueva la cookie de archivos: cubre las sesiones iniciadas antes de que
+    // existiera y la cookie borrada del navegador con el token aún vigente.
+    emitirCookieArchivos(res, req.token, req.usuario.exp);
     return res.json(usuario);
   } catch (error) {
     console.error('Error en /me:', error);
@@ -63,4 +84,12 @@ async function me(req, res) {
   }
 }
 
-module.exports = { login, me };
+// POST /api/auth/logout — el JWT de la API vive en el cliente y se descarta
+// allí; la cookie de archivos es HttpOnly, así que solo el servidor puede
+// borrarla. No exige token: debe funcionar también con la sesión ya vencida.
+function logout(req, res) {
+  res.setHeader('Set-Cookie', serializarCookieBorrada({ secure: cookieSegura() }));
+  return res.status(204).end();
+}
+
+module.exports = { login, me, logout };
