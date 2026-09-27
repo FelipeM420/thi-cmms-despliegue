@@ -55,11 +55,36 @@ export const UNIDADES_INSUMO = [
   ['GLOBAL', 'Global'],
 ];
 
+// HU14 — estados de una orden de trabajo.
+export const ESTADOS_ORDEN_TRABAJO = [
+  ['EMITIDA', 'Emitida'],
+  ['EN_PROCESO', 'En proceso'],
+  ['CERRADA', 'Cerrada'],
+  ['CANCELADA', 'Cancelada'],
+];
+
+// HU17 (preventivas a 15/8/1 dias) y HU18 (vencidas).
+export const TIPOS_ALERTA = [
+  ['PREVENTIVA_15D', 'Preventiva · 15 dias'],
+  ['PREVENTIVA_8D', 'Preventiva · 8 dias'],
+  ['PREVENTIVA_1D', 'Preventiva · 1 dia'],
+  ['VENCIDA', 'Vencida'],
+];
+
+export const ESTADOS_ALERTA = [
+  ['PENDIENTE', 'Pendiente'],
+  ['LEIDA', 'Leida'],
+  ['RESUELTA', 'Resuelta'],
+];
+
 const mapaDe = (pares) => Object.fromEntries(pares);
 export const ETIQUETA_FRECUENCIA = mapaDe(FRECUENCIAS);
 export const ETIQUETA_PRIORIDAD = mapaDe(PRIORIDADES);
 export const ETIQUETA_ESTADO = mapaDe(ESTADOS_MANTENIMIENTO);
 export const ETIQUETA_MOTIVO = mapaDe(MOTIVOS_NO_EJECUCION);
+export const ETIQUETA_ESTADO_OT = mapaDe(ESTADOS_ORDEN_TRABAJO);
+export const ETIQUETA_TIPO_ALERTA = mapaDe(TIPOS_ALERTA);
+export const ETIQUETA_ESTADO_ALERTA = mapaDe(ESTADOS_ALERTA);
 const ETIQUETAS_UNIDAD = mapaDe(UNIDADES_INSUMO);
 
 // Tolera valores heredados que no estén en la lista (se muestran tal cual).
@@ -139,12 +164,14 @@ export function calcularMinutosTrabajados({ horaInicio, horaFin, minutosPausa = 
   return Math.max(0, Math.round(brutos - (Number(minutosPausa) || 0)));
 }
 
+// Cada línea se redondea a centavos antes de sumar, igual que el backend
+// (utils/costos.js), para que la vista previa coincida con lo que se guarda.
 function costoDeLinea(linea) {
   if (linea.costoLinea !== undefined && linea.costoLinea !== null && linea.costoLinea !== '') {
-    return Number(linea.costoLinea) || 0;
+    return redondear2(Number(linea.costoLinea) || 0);
   }
   if (linea.cantidad == null || linea.cantidad === '' || linea.costoUnitario == null || linea.costoUnitario === '') return 0;
-  return (Number(linea.cantidad) || 0) * (Number(linea.costoUnitario) || 0);
+  return redondear2((Number(linea.cantidad) || 0) * (Number(linea.costoUnitario) || 0));
 }
 
 // HU12 — (Nº técnicos × horas × valor hora) + Σ insumos.

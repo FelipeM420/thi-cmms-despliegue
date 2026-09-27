@@ -69,6 +69,28 @@ async function listar(req, res) {
   }
 }
 
+// HU1 — hoja de vida: mantenimientos contratados a terceros y su total facturado.
+const LIMITE_SERVICIOS_EN_FICHA = 60;
+
+async function serviciosExternosDe(equipoId) {
+  const [serviciosExternos, agregado] = await Promise.all([
+    prisma.servicioExterno.findMany({
+      where: { equipoId },
+      orderBy: [{ fechaServicio: 'desc' }, { creadoEn: 'desc' }],
+      take: LIMITE_SERVICIOS_EN_FICHA,
+      include: {
+        registradoPor: { select: { nombre: true } },
+        mantenimientoProgramado: { select: { id: true, fechaProgramada: true } },
+      },
+    }),
+    prisma.servicioExterno.aggregate({ where: { equipoId }, _sum: { costoFacturado: true }, _count: true }),
+  ]);
+  return {
+    serviciosExternos,
+    resumenServiciosExternos: { cantidad: agregado._count, total: agregado._sum.costoFacturado ?? 0 },
+  };
+}
+
 // GET /api/equipos/:id — HU1/HU3: ficha técnica de detalle
 async function obtener(req, res) {
   try {
@@ -85,6 +107,8 @@ async function obtener(req, res) {
           include: {
             tarea: { select: { nombre: true } },
             tecnicoAsignado: { select: { nombre: true } },
+            // HU1 — si lo realizó un proveedor: solo se indica quién, sin costos.
+            servicioExterno: { select: { id: true, proveedor: true } },
             registroEjecucion: {
               select: {
                 id: true,
@@ -102,6 +126,11 @@ async function obtener(req, res) {
     });
     if (!equipo) {
       return res.status(404).json({ error: 'Equipo no encontrado.' });
+    }
+    // HU1 — los servicios externos traen costos facturados y el informe del
+    // proveedor: son información contable, solo para el administrador.
+    if (req.usuario.rol === 'ADMINISTRADOR') {
+      return res.json({ ...equipo, ...(await serviciosExternosDe(equipo.id)) });
     }
     return res.json(equipo);
   } catch (error) {

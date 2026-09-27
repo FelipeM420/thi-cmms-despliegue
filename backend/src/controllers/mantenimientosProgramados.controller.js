@@ -6,12 +6,15 @@ const { z } = require('zod');
 const prisma = require('../config/prisma');
 const { PRIORIDADES, ESTADOS_MANTENIMIENTO, ESTADOS_EDITABLES_PLANIFICACION } = require('../utils/enums');
 const { textoOpc, fechaOpc, enumOpc } = require('../utils/consultas');
+const { operacionesOrden } = require('../utils/ordenesTrabajo');
 
 const include = {
   equipo: { select: { id: true, nombre: true, referencia: true, zona: true } },
   tarea: { select: { id: true, nombre: true, duracionEstimadaMin: true } },
   tecnicoAsignado: { select: { id: true, nombre: true, email: true } },
   asignadoPor: { select: { id: true, nombre: true } },
+  // HU14 — la OT que ya se emitió (a mano o por el motor), para no ofrecer emitir otra.
+  ordenTrabajo: { select: { id: true, consecutivo: true, estado: true } },
 };
 
 // HU5 — "Asigna fecha, equipo, tarea, nivel de prioridad".
@@ -224,8 +227,13 @@ async function actualizar(req, res) {
     if (parseo.data.estado) {
       const actual = await prisma.mantenimientoProgramado.findUnique({
         where: { id: req.params.id },
-        select: { registroEjecucion: { select: { finalizadoEn: true } } },
+        select: { registroEjecucion: { select: { finalizadoEn: true } }, servicioExterno: { select: { id: true } } },
       });
+      if (actual?.servicioExterno) {
+        return res.status(409).json({
+          error: 'Este mantenimiento lo realizó un servicio externo (HU1); no se puede cambiar su estado.',
+        });
+      }
       if (actual?.registroEjecucion?.finalizadoEn) {
         return res.status(409).json({
           error: 'Este mantenimiento ya tiene una ejecución finalizada. Usa «reprogramar» para volver a programarlo.',
@@ -233,11 +241,30 @@ async function actualizar(req, res) {
       }
     }
 
-    const mantenimiento = await prisma.mantenimientoProgramado.update({
-      where: { id: req.params.id },
-      data: parseo.data,
-      include,
-    });
+    const operaciones = [
+      prisma.mantenimientoProgramado.update({
+        where: { id: req.params.id },
+        data: parseo.data,
+        include,
+      }),
+    ];
+
+    // HU17/HU18 — al cancelar, las alertas pendientes de esa ocurrencia
+    // quedan sin objeto: se resuelven en la misma transaccion.
+    if (parseo.data.estado === 'CANCELADO') {
+      operaciones.push(
+        prisma.alerta.updateMany({
+          where: { mantenimientoProgramadoId: req.params.id, estado: { not: 'RESUELTA' } },
+          data: { estado: 'RESUELTA', resueltaEn: new Date() },
+        }),
+        ...operacionesOrden(prisma, req.params.id, { tipo: 'CANCELADO' })
+      );
+    } else {
+      // HU14 — una nueva fecha o prioridad se copia a la OT del mantenimiento.
+      operaciones.push(...operacionesOrden(prisma, req.params.id, { tipo: 'ACTUALIZADO', cambios: parseo.data }));
+    }
+
+    const [mantenimiento] = await prisma.$transaction(operaciones);
     return res.json(mantenimiento);
   } catch (error) {
     if (error.code === 'P2025') {
@@ -277,17 +304,22 @@ async function asignar(req, res) {
       return res.status(400).json({ error: 'Solo se pueden asignar mantenimientos a usuarios con rol técnico.' });
     }
 
-    const actualizado = await prisma.mantenimientoProgramado.update({
-      where: { id: mantenimiento.id },
-      data: {
-        tecnicoAsignadoId: tecnico.id,
-        asignadoPorId: req.usuario.sub,
-        fechaAsignacion: new Date(),
-        // Solo sube el estado desde PROGRAMADO; una reasignación conserva ASIGNADO.
-        estado: mantenimiento.estado === 'PROGRAMADO' ? 'ASIGNADO' : mantenimiento.estado,
-      },
-      include,
-    });
+    // HU14 — la OT del mantenimiento (si ya se emitió) cambia de técnico en la
+    // misma transacción: si no, el técnico nuevo no la vería y el anterior sí.
+    const [actualizado] = await prisma.$transaction([
+      prisma.mantenimientoProgramado.update({
+        where: { id: mantenimiento.id },
+        data: {
+          tecnicoAsignadoId: tecnico.id,
+          asignadoPorId: req.usuario.sub,
+          fechaAsignacion: new Date(),
+          // Solo sube el estado desde PROGRAMADO; una reasignación conserva ASIGNADO.
+          estado: mantenimiento.estado === 'PROGRAMADO' ? 'ASIGNADO' : mantenimiento.estado,
+        },
+        include,
+      }),
+      ...operacionesOrden(prisma, mantenimiento.id, { tipo: 'ASIGNADO', tecnicoId: tecnico.id }),
+    ]);
     return res.json(actualizado);
   } catch (error) {
     console.error('Error al asignar el mantenimiento programado:', error);

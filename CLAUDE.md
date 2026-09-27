@@ -5,8 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) and AI assistants wh
 ## What this is
 
 CMMS (preventive-maintenance system) for THI S.A.S. — a Universidad Mariana thesis project (Authors: Andrés Lombana & Sebastián Moreno).
-This repo covers **Sprint 1** (HU1-HU3, HU24), **Sprint 2** (HU4-HU8) and **Sprint 3** (HU9-HU13: Ejecución del mantenimiento).
-Next implementation phase is **Sprint 4** (HU14, HU15, HU16, HU17, HU18: Órdenes de trabajo y alertas).
+This repo covers **Sprint 1** (HU1-HU3, HU24), **Sprint 2** (HU4-HU8), **Sprint 3** (HU9-HU13: Ejecución del mantenimiento)
+and **Sprint 4** (HU14-HU18: Órdenes de trabajo y alertas).
+Between Sprint 4 and Sprint 5 there was a **hardening pass** (seguridad de archivos, HU1 mantenimiento externo, HU14 OT automáticas,
+consentimiento Ley 1581): see "Refuerzo previo a Sprint 5" below and `docs/adr/`.
+Next implementation phase is **Sprint 5** (HU19, HU20, HU21, HU22, HU23: Indicadores y reportes) — **not started**.
 Two independent npm projects, no workspace root: `backend/` (Node + Express + Prisma + PostgreSQL) and `frontend/` (React + Vite).
 
 ## Language convention
@@ -18,13 +21,16 @@ The entire codebase — identifiers, function names, comments, commit-worthy str
 ### Backend (`cd backend`)
 ```bash
 npm install
-cp .env.example .env                         # set DATABASE_URL and JWT_SECRET (must be >= 16 chars or server won't boot)
+cp .env.example .env                         # set DATABASE_URL and JWT_SECRET (>= 32 chars, not the example, not a leaked one, or the server won't boot)
 npx prisma generate                          # or: npm run prisma:generate
 npx prisma migrate dev                       # apply all existing migrations
 npm run seed                                 # 2 test users + 8 equipos matching the Figma prototype (idempotent upserts)
 npm run dev                                  # nodemon, http://localhost:4000
 npm start                                    # plain node, no watch
 npm run prisma:studio                        # DB browser
+npm test                                     # node:test, sin base de datos (Node >= 22)
+npm run test:cobertura                       # lo mismo con reporte de cobertura
+npm run test:integracion                     # contra Postgres REAL desechable (THI_TEST_DATABASE_URL, nombre con "pruebas"/"test"); vacía sus tablas
 ```
 
 ### Frontend (`cd frontend`, separate terminal)
@@ -36,24 +42,69 @@ npm run preview
 ```
 
 ### Tests / lint
-There is **no test runner and no linter configured** in either project. Do not assume `npm test` exists. Verify syntax with `node -c` (backend) and `npm run build` (frontend).
+- **Backend:** `npm test` corre `node:test` sobre `backend/test/**/*.test.js` (motores, archivos, consentimiento, límites, bitácora, manejo de errores y la paridad de
+  costos con el frontend). No usan la base de datos real ni la bitácora real (la de `auditoria.test.js` va a un archivo temporal); la suite de `test/integracion/`
+  también entra en el patrón, pero se omite sola sin `THI_TEST_DATABASE_URL`. La lógica nueva se escribe con TDD (primero la prueba).
+  Cobertura de `utils/`, `middleware/` y `config/`: ≈100 % de líneas (`npm run test:cobertura`).
+- **Integración (Postgres real):** `npm run test:integracion` corre `backend/test/integracion/*.bd.test.js` (OT ↔ mantenimiento, servicios
+  externos, motor de OT, consentimiento, claves foráneas, concurrencia). Se omite sola sin `THI_TEST_DATABASE_URL`, y se **niega** a correr
+  si el nombre de la base no contiene "pruebas" o "test": **nunca** apuntarla a la base de desarrollo. Usa carpetas temporales para
+  `UPLOADS_DIR` y `AUDITORIA_LOG`, así que no toca `src/uploads/` ni la bitácora real.
+- **Frontend:** no hay runner de pruebas; se verifica con `npm run build`.
+- **Linter:** no hay ninguno en ningún proyecto. Sintaxis del backend: `node --check <archivo>`.
+- La carpeta `.claude/` (agentes, skills, reglas y ajustes de Claude Code) es **local y no se versiona**.
 
 ### Test users (created by the seed)
-| Rol | Email | Password |
-|---|---|---|
-| ADMINISTRADOR | anfelombana123@umariana.edu.co | THIadmin2026* |
-| TECNICO | sefemoreno123@umariana.edu.co | THItecnico2026* |
+
+Los dos autores son **administradores**; los tres técnicos son perfiles ficticios que simulan al personal de planta de THI S.A.S. El seed sincroniza nombre, rol y contraseña en cada ejecución (`update` real, no `update: {}`), así que re-ejecutarlo devuelve siempre el mismo estado de cuentas.
+
+| Rol | Nombre | Email | Password |
+|---|---|---|---|
+| ADMINISTRADOR | Andrés Felipe Lombana Melo | anfelombana123@umariana.edu.co | THIadmin2026* |
+| ADMINISTRADOR | Sebastián Felipe Moreno Martínez | sefemoreno123@umariana.edu.co | THIadmin2026* |
+| TECNICO | Carlos Alberto Mendoza *(Principal Biomédico)* | carlos.mendoza@thi.com.co | THItecnico2026* |
+| TECNICO | Juan Pablo Pérez *(Mecánico y Climatización)* | juan.perez@thi.com.co | THItecnico2026* |
+| TECNICO | John Doe Morales *(Planta y Servicios Generales)* | john.doe@thi.com.co | THItecnico2026* |
+
+La especialidad de cada técnico es documental: `Usuario` no tiene campo `cargo`.
 
 ## Backend architecture
 
 Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/*.controller.js` → `src/config/prisma.js` (singleton `PrismaClient`).
 
-- **Auth & Access Control** — `src/middleware/auth.js` exports `verificarToken` (validates JWT, sets `req.usuario = { sub, nombre, rol }`) and `requiereRol('ADMINISTRADOR', ...)`.
+- **Auth & Access Control** — `src/middleware/auth.js` exports `verificarToken` (validates JWT HS256, sets `req.usuario = { sub, nombre, rol, iat, exp }` y `req.token`) and `requiereRol('ADMINISTRADOR', ...)`.
 - **Validation** — every write body is parsed with a **Zod** schema in the controller; `.safeParse` failures return `400` with `error.issues[0].message`.
-- **File uploads (HU1)** — `multer` disk storage in `equipos.routes.js`, fields `foto` (image only) and `manual` (PDF only), 10 MB cap. Files land in `UPLOADS_DIR` (default `src/uploads`), served statically at `/uploads`.
+- **File uploads (HU1, HU9, servicios externos)** — `src/middleware/subidaArchivos.js` (`crearSubida(campos)`): `multer` 2.x con límites (10 MB, 20 campos, 100 KB por campo de texto),
+  nombres UUID, lista cerrada de tipos por **bytes mágicos** (`src/utils/tiposArchivo.js`: PNG, JPEG y PDF; el `mimetype` del cliente no cuenta) y limpieza del archivo si la petición se rechaza.
+  En la ejecución se autoriza (`autorizarEjecucion.js`) **antes** de leer la subida. Carpeta única `UPLOADS_DIR` (`src/config/uploads.js`, por defecto `src/uploads`).
+- **Servicio de archivos (`/uploads`)** — `src/middleware/servidorArchivos.js`. Ya no es estático público: exige la cookie HttpOnly `thi_archivos` (JWT) que emite `POST /api/auth/login` y `GET /api/auth/me`
+  (`src/utils/cookieArchivos.js`; `POST /api/auth/logout` la borra). 401 sin cookie; 404 uniforme para lo inexistente y lo no autorizado; autorización por prefijo del archivo
+  (`foto`/`manual`: cualquier sesión; `evidenciaAntes`/`evidenciaDespues`: el técnico de esa ejecución o el admin; `informe`: solo admin); `no-store` en lo sensible; cada acceso a evidencia queda en la bitácora.
 - **Audit log (Ley 1581)** — `src/middleware/auditoria.js` is global; on every `POST/PUT/PATCH/DELETE` it appends a JSON line to `src/logs/auditoria.log` on response `finish`. Keep working when adding write endpoints.
-- **Security posture (ISO 25010)** — `helmet`, `express-rate-limit` (10 login attempts / 15 min / IP on `/api/auth/login`), bcrypt password hashes, fail-fast boot if `JWT_SECRET` is missing/short.
-- **Frequency generation engine (HU6)** — `src/utils/frecuencias.js` calculates recurrence occurrences (DIARIA, SEMANAL, QUINCENAL, MENSUAL, etc.) starting from `fechaInicio` with an idempotent cutoff (`proximaGeneracionHasta`).
+- **Security posture (ISO 25010)** — `helmet`, `express-rate-limit` (10 login attempts / 15 min / IP on `/api/auth/login`; además `src/middleware/limitadores.js`: 1000 escrituras / 15 min / IP
+  **antes** de la bitácora, para que un bucle de peticiones no la llene, y 2000 peticiones / 5 min / IP a `/uploads`), bcrypt password hashes, JWT solo HS256, y arranque que falla si
+  `JWT_SECRET` falta, es corto (< 32), es de ejemplo, es predecible (fragmento repetido, secuencia o < 128 bits estimados) o coincide con la huella SHA-256 de uno que estuvo publicado,
+  aunque venga entre comillas o con espacios (`src/config/secretoJwt.js`).
+  `seed.js` se niega a correr con `NODE_ENV=production` salvo `PERMITIR_SEED_EN_PRODUCCION=si`.
+- **Frequency generation engine (HU6)** — `src/utils/frecuencias.js` calculates recurrence occurrences (DIARIA, SEMANAL, QUINCENAL, MENSUAL, etc.) starting from `fechaInicio` with an idempotent cutoff (`proximaGeneracionHasta`). Aritmética en UTC y cada ocurrencia se ancla a `fechaInicio` (un plan mensual iniciado el día 31 cae el 28-feb y vuelve al 31-mar; antes derivaba al día 3). `calcularGeneracion` devuelve además `truncado` y `generadoHasta`: si se llega a `MAX_OCURRENCIAS` (500), el plan queda cubierto solo hasta la última fecha creada y hay que volver a generar (antes se marcaba todo el horizonte como generado y las fechas cortadas se perdían).
+- **Cost engine (HU12)** — `src/utils/costos.js`. Su espejo en cliente vive en `frontend/src/utils/mantenimiento.js`; si cambia uno, cambia el otro. `backend/test/paridad-costos.test.js` lo hace cumplir (cada línea de insumo se redondea a centavos antes de sumar).
+- **Error handling** — `src/middleware/manejoErrores.js`: `asyncHandler`, `errorHttp(mensaje, estado, codigo?)` (el `codigo` opcional viaja en el JSON de los 4xx para que el cliente distinga un caso, p. ej. `CONSENTIMIENTO_REQUERIDO`), `protegerSubida(multer...)` (una subida mal formada responde 400, no 500) y el manejador central que cierra la cadena en `server.js` (4xx con su mensaje, 500 genérico sin filtrar detalles). Los controladores nuevos lo usan; los existentes conservan su `try/catch`. Toda ruta con `multer` debe envolverlo con `protegerSubida`.
+- **Alert engine (HU17/HU18)** — `src/utils/alertas.js`. Por cada mantenimiento pendiente genera la alerta del **umbral más ajustado ya cruzado** (15 → 8 → 1 día), no las tres a la vez, y marca `VENCIDA` cuando la fecha pasó. Idempotente.
+- **PDF generator (HU15)** — `src/utils/pdfOrdenTrabajo.js` con `pdfkit` (sin navegador headless). El controlador canaliza el documento hacia la respuesta.
+- **Servicios externos (HU1)** — `src/controllers/serviciosExternos.controller.js`, `src/utils/serviciosExternos.js` (reglas puras). Solo `ADMINISTRADOR`: es información contable. Un servicio
+  preventivo puede cubrir una ocurrencia del cronograma y en una sola transacción cierra el mantenimiento, resuelve sus alertas y cierra su OT. Costo tal cual lo factura el proveedor (sin redondeos).
+- **OT automáticas (HU14)** — `src/utils/ordenesAutomaticas.js` (motor) y `src/utils/ordenesTrabajo.js` (consecutivo + reintento por colisión + sincronización OT ↔ mantenimiento). Cada pasada emite una OT por
+  mantenimiento PROGRAMADO/ASIGNADO de la **semana en curso** (lunes–domingo, hora de Colombia) que no tenga OT; `emitidaPorId` nulo = la emitió el sistema. Idempotente; la emisión confirma **dentro de la transacción** que el mantenimiento sigue
+  PROGRAMADO/ASIGNADO (un `updateMany` que bloquea su fila), así que una cancelación simultánea no deja una OT abierta (`emitirConConsecutivo` con `mantenimientoDebe`). Se ejecuta al arrancar, cada 12 h, con
+  `POST /api/ordenes-trabajo/generar` (admin) y se apaga con `GENERAR_OT_AUTOMATICAS=false`. Una OT ligada al cronograma sigue su mantenimiento (iniciar → EN_PROCESO, finalizar → CERRADA; NO_EJECUTADO la cierra con el motivo).
+- **Fechas** — `src/utils/fechas.js`: día, semana y minuto en hora de Colombia (`America/Bogota`); todo lo demás sigue guardándose a medianoche UTC.
+- **Consentimiento (Ley 1581)** — `src/config/politicaDatos.js` (texto y `VERSION_POLITICA`; **borrador pendiente de validación jurídica**), `middleware/consentimiento.js`, `controllers/consentimiento.controller.js`,
+  `GET/POST /api/consentimiento`. Iniciar, editar y finalizar una ejecución exigen haber aceptado la versión vigente (403 con `codigo: CONSENTIMIENTO_REQUERIDO`). La tabla es solo de altas (disparador SQL).
+  Si cambia el texto de fondo, hay que subir `VERSION_POLITICA` para volver a pedirlo.
+- **Firma de conformidad (HU9)** — `src/utils/firmaConformidad.js`. El cliente solo envía `firmaConforme` (true/false); el servidor escribe `"<Nombre> — AAAA-MM-DD HH:mm (hora de Colombia)"` con el usuario autenticado y conserva la primera firma. Un `firmaTecnico` enviado por el cliente se ignora.
+  Solo el técnico asignado pone o retira la firma (el administrador recibe 403 si intenta cambiarla; si no la cambia, guarda lo demás).
+- **Límites de la ejecución** — `src/utils/limitesEjecucion.js`: minutos ≤ 1 mes, técnicos ≤ 50, montos ≤ DECIMAL(14,2), también la línea de insumo y el costo total al finalizar. Un valor que no cabe responde 400, no 500.
+- **Query validation** — `src/utils/consultas.js` valida los filtros de query con Zod (`enumOpc`, `fechaOpc`, `textoOpc`, `booleanoOpc`): un valor inválido responde 400, no un 500 opaco desde Prisma.
 
 ### Data model (`prisma/schema.prisma`)
 - **Sprint 1**: `Usuario`, `Equipo`.
@@ -67,29 +118,84 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
   - `InsumoUtilizado` (HU11): insumos/repuestos consumidos en la ejecución con costos unitarios y totales.
   - `TareaPendiente` (HU13): registro obligatorio de tareas no ejecutadas con categoría (`MotivoNoEjecucion`) o hallazgos.
   - Enums: `MotivoNoEjecucion`.
-- **Sprint 4+ models** (órdenes de trabajo, alertas preventivas) se vincularán a `MantenimientoProgramado` y `Equipo`.
+- **Sprint 4**:
+  - `OrdenTrabajo` (HU14, HU15, HU16): OT formal con consecutivo institucional `OT-<anio>-<0000>`
+    (numeración por año vía `@@unique([anio, numero])`). Relación 1:1 opcional con
+    `MantenimientoProgramado` (materialización desde el cronograma) o emisión directa sobre un `Equipo`.
+  - `Alerta` (HU17, HU18): alerta preventiva o de vencimiento. `@@unique([mantenimientoProgramadoId, tipo])`
+    hace idempotente al motor de generación.
+  - Enums: `EstadoOrdenTrabajo`, `TipoAlerta`, `EstadoAlerta`.
+- **Refuerzo previo a Sprint 5** (migraciones `servicios_externos`, `ordenes_emitidas_por_el_sistema`, `consentimiento_tratamiento_datos`, `fk_restrict_trazabilidad`):
+  - `ServicioExterno` (HU1): mantenimiento tercerizado (naturaleza PREVENTIVO/CORRECTIVO, proveedor, descripción, `costoFacturado` Decimal(14,2), factura opcional, informe PDF); vínculo 1:1 opcional con `MantenimientoProgramado`. CHECK: costo ≥ 0 y textos no vacíos.
+  - `OrdenTrabajo.emitidaPorId` es opcional: nulo = emitida por el sistema (CHECK: solo si `origen = AUTOMATICO`).
+  - `ConsentimientoTratamiento` (Ley 1581): quién aceptó qué versión y cuándo; `@@unique([usuarioId, versionPolitica])`; disparador que impide `UPDATE` y `DELETE`.
+  - **Ninguna clave foránea borra ni anula en cascada** (todas `RESTRICT`): la trazabilidad no se pierde por borrar un padre. La aplicación solo borra filas hoja (`eliminarInsumo`, `eliminarPendiente`).
+- **Sprint 5** (indicadores y reportes) se apoya en los datos ya persistidos; no requiere tablas nuevas.
 
 ## Frontend architecture
 
 React 18 + Vite 6 + React Router **v7** + Tailwind + axios. No TypeScript, no external state library.
 
 - **Auth state** — `src/context/AuthContext.jsx` holds `usuario` y mirrors it + JWT into `localStorage` (`thi_token`, `thi_usuario`).
-- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`.
+- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`, `src/api/ordenesTrabajo.js`, `src/api/alertas.js`, `src/api/serviciosExternos.js`, `src/api/consentimiento.js`.
+- **Alertas context** — `src/context/AlertasContext.jsx` mantiene el contador de alertas pendientes (refresco cada 60 s) que consume el badge de la campana en `TopBar.jsx`. Las vistas llaman a `refrescar()` tras mutar alertas.
+- **Consentimiento** — `src/components/ConsentimientoGate.jsx` envuelve todas las rutas: tras iniciar sesión muestra el aviso de tratamiento de datos (bloqueante, sin cerrar con el fondo) hasta que se acepta o se cierra sesión.
+- **Servicios externos (HU1)** — `src/components/ServiciosExternos.jsx` y `ModalServicioExterno.jsx`, dentro de `/equipos/:id` y solo para el administrador.
 - **Routing** — `src/App.jsx`. `<ProtectedRoute>` guards routes; live pages:
   - `/equipos` (listado), `/equipos/:id` (detalle), `/equipos/nuevo` + `/equipos/:id/editar` (admin).
   - `/mantenimiento`:
     - Admin: pestañas `Cronograma` (HU5, HU7) y `Tareas y planes` (HU4, HU6). Incluye acceso en modo lectura a `HojaEjecucionModal`.
     - Técnico: vista directa `Mis Tareas` (HU8) con acciones para iniciar, registrar ejecución y ver resumen (`HojaEjecucionModal`, `ResumenEjecucion`).
-- **Deliberately stubbed** — `/dashboard`, `/ordenes-trabajo`, `/alertas`, `/reportes` all render `<Proximamente titulo=... sprint=... />`. **Do not build these out until their respective sprint arrives.**
+  - `/ordenes-trabajo` (`OrdenesTrabajoView.jsx`): historial con filtros, emisión (admin), ciclo de vida y descarga de PDF (HU14-HU16). El técnico solo ve las órdenes que tiene asignadas.
+  - `/alertas` (`AlertasView.jsx`): centro de alertas con tarjetas por severidad, filtros, gestión de leídas/resueltas y disparo del motor (admin) (HU17-HU18).
+- **Deliberately stubbed** — `/dashboard` y `/reportes` all render `<Proximamente titulo=... sprint=... />`. **Do not build these out until their respective sprint arrives.**
 
-## Guidelines for Sprint 4 (Next Step)
+## Guidelines for Sprint 5 (Next Step)
 
-When working on **Sprint 4 (Órdenes de Trabajo y Alertas)**:
-1. **HU14 (Generación automática de OT)**: Materialización de OT formal a partir de `MantenimientoProgramado`.
-2. **HU15 (Exportación a PDF)**: Generador de plantilla PDF institucional para imprimir la OT.
-3. **HU16 (Historial de OT)**: Vista de consulta histórica con filtros.
-4. **HU17 (Alertas preventivas)**: Motor de notificaciones a 15, 8 y 1 día de anticipación a la fecha programada.
-5. **HU18 (Alertas de tareas vencidas)**: Notificación de mantenimientos en estado `PROGRAMADO` cuya fecha ya expiró.
+When working on **Sprint 5 (Indicadores y Reportes)** — reemplaza los stubs `/dashboard` y `/reportes`:
+1. **HU19 (Costos por mantenimiento)**: reporte trimestral y anual agregando `RegistroEjecucion.costoTotal`.
+2. **HU20 (Horas por equipo)**: ranking de equipos por `minutosTrabajados` acumulados.
+3. **HU21 (Áreas intervenidas)**: reporte por `Equipo.zona`.
+4. **HU22 (Consumo de recursos)**: agregados sobre `InsumoUtilizado` y mano de obra.
+5. **HU23 (Historial de registros)**: persistencia ya garantizada; falta la vista de consulta histórica.
+
+No se prevén tablas nuevas: los datos ya están en `RegistroEjecucion`, `InsumoUtilizado`, `OrdenTrabajo` y `Alerta`.
+El endpoint `GET /api/ejecuciones` (solo administrador, con filtros) es la base natural de estos reportes, **pero no tiene paginación**:
+los reportes y el historial (HU23) usan endpoints propios (`reportes.controller.js`, solo `ADMINISTRADOR`) con agregados `groupBy` de Prisma y límite máximo.
+
+**Convenciones para Sprint 5:** lógica de agregación como funciones puras en `src/utils/` con TDD; respuesta como el resto de la API
+(recurso directo, error `{ error }`); listados paginados como `{ items, total, pagina, limite }`; fechas de periodo (trimestre/año)
+en hora de Colombia (UTC-5), porque el resto de las fechas se guarda a medianoche UTC.
+
+### Decisiones con el Product Owner (estado tras el refuerzo)
+1. **HU1 → HU19: mantenimiento externo — respondida e implementada.** Se registra el valor facturado, la descripción y el informe PDF, ligados a la hoja de vida del equipo
+   (`ServicioExterno`). "Tipo de mantenimiento" en HU19 = **Interno/Externo × Preventivo/Correctivo**. Falta que el PO confirme por escrito el proveedor como texto libre (sin catálogo) y el consecutivo de factura opcional.
+2. **HU14: generación automática de OT — implementada, pendiente de aceptación formal.** El sistema emite una OT por mantenimiento de la semana en curso; el administrador conserva la emisión manual (`docs/adr/0002`).
+3. **Retención y datos personales (Ley 1581) — decidida, pendiente de validación jurídica.** Conservar ≥ 10 años o la vida útil del equipo (lo que sea mayor); la foto de firma y las evidencias se tratan como
+   datos sensibles, con consentimiento previo y uso exclusivo de auditoría y control del mantenimiento (`docs/adr/0003`). **No hay purga automática**: nada borra evidencia. Falta: revisión del texto del aviso,
+   inscripción en el RNBD si aplica, cita normativa exacta del plazo y procedimiento para revocar la autorización.
+
+### Calidad de datos que Sprint 5 necesita
+- `Equipo.zona` es texto libre: HU21 se fragmenta por tildes o mayúsculas. Normalizar (o catálogo) antes de agrupar.
+- `InsumoUtilizado.descripcion` es texto libre y `equipoInsumoId` es opcional: HU22 debe agrupar por `equipoInsumoId` y solo caer a la descripción normalizada si falta.
+- `valorHoraManoObra` se digita libre en cada ejecución (es obligatorio al completar): los costos entre técnicos no son comparables. Valorar una tarifa configurable que prellene el campo.
+
+### Deuda conocida al cerrar Sprint 4
+- **Motor de alertas:** `server.js` lo ejecuta al arrancar y cada 12 h con un temporizador dentro del proceso (además del botón de la UI y `POST /api/alertas/generar`).
+  No hay cron: si el servidor está caído en el momento del umbral, la alerta sale en el siguiente arranque, y con varias instancias correría en cada una (la unicidad de `Alerta` evita duplicados).
+- Pendiente de validar con el Product Owner (HU1): *"PDF en Word del manual"* (hoy solo se acepta PDF) y el campo *"ítem"* de la tarjeta maestra, que no existe en el modelo.
+- **Seguridad pendiente:** la bitácora de auditoría es un archivo plano (`src/logs/auditoria.log`) y no una tabla consultable; no hay gestión de usuarios (alta, baja, cambio de contraseña);
+  el token de sesión vive en `localStorage` (riesgo XSS); el motor de OT/alertas corre dentro del proceso (con varias instancias correría en cada una; la unicidad de la base evita duplicados).
+  Resuelto en el refuerzo: `/uploads` ya exige sesión, la subida valida el contenido real y el secreto JWT se valida al arrancar.
+- **Pendiente de las revisiones del refuerzo (sin CRITICAL ni HIGH abiertos):** la cookie `thi_archivos` lleva el mismo JWT de la API (mejor un token propio con `aud: archivos`)
+  y solo es `Secure` con `NODE_ENV=production`; las fotos conservan sus metadatos EXIF (GPS, dispositivo); editar un servicio externo no guarda el valor anterior (dato contable);
+  el informe PDF se sirve `inline`; sin `app.set('trust proxy')` todos los usuarios detrás de un proxy comparten el límite por IP (también el del login);
+  el disparador de consentimientos no bloquea `TRUNCATE` ni al dueño de la base (usar un rol de aplicación sin esos permisos); el CHECK de textos de `servicios_externos` solo recorta espacios.
+- **Antes de Sprint 5 (base de datos):** índice sobre `insumos_utilizados.equipoInsumoId` (HU22 agrupa por él) y paginar `GET /api/ordenes-trabajo` (el motor hará crecer la tabla).
+  Para contar "OT emitidas por el sistema" usar `emitidaPorId IS NULL`, **no** `origen = AUTOMATICO`: una OT que el administrador materializa desde el cronograma también lleva `AUTOMATICO`.
+- **`activo` de usuario:** el middleware de sesión no consulta `Usuario.activo` en cada petición (solo el login, `/auth/me` y el servicio de `/uploads`); un usuario desactivado conserva su token hasta que expire (8 h).
+- **Mantenibilidad:** ~48 bloques `try/catch` casi idénticos en los controladores; `HojaEjecucionModal.jsx` (759 líneas; la firma y las evidencias ya se extrajeron a `CamposEvidencia.jsx`), `TareasYPlanesView.jsx`, `CronogramaView.jsx`,
+  `OrdenesTrabajoView.jsx` y `ejecuciones.controller.js` superan las 600: extraer antes de agregarles código.
 
 ## Documentación del Proyecto (`./docs/`)
 
@@ -97,3 +203,4 @@ When working on **Sprint 4 (Órdenes de Trabajo y Alertas)**:
 - `PRODUCT_BACKLOG_ordenado.pdf`: Priorización de requerimientos para cada sprint.
 - `Marco_Normativo_y_Legal.docx`: Cumplimiento de Ley 1581 (Habeas Data) y registros de auditoría.
 - `BPMN - Software Mantenimiento (2).png`: Diagramas de flujo del proceso de mantenimiento.
+- `adr/`: registros de decisiones de arquitectura (estado *proposed*: pendientes de aceptación del Product Owner).

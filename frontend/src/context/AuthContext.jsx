@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useCallback } from 'react';
-import { login as loginApi } from '../api/auth';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { login as loginApi, cerrarSesion, obtenerPerfil } from '../api/auth';
 
 const AuthContext = createContext(null);
 
@@ -20,7 +20,20 @@ export function AuthProvider({ children }) {
     return datosUsuario;
   }, []);
 
+  // Las fotos, manuales y evidencias se sirven con una cookie HttpOnly que el
+  // servidor emite al iniciar sesión. Al abrir la app con una sesión ya
+  // guardada se renueva (cubre sesiones anteriores a esa cookie o cookies
+  // borradas). Un 401 lo maneja el interceptor de axios; cualquier otro fallo
+  // solo deja las imágenes sin cargar hasta el siguiente intento, no cierra la sesión.
+  useEffect(() => {
+    if (!localStorage.getItem('thi_token')) return;
+    obtenerPerfil().catch(() => {});
+  }, []);
+
   const logout = useCallback(() => {
+    // Pide al servidor borrar la cookie de archivos; la sesión local se cierra
+    // igual aunque esa llamada falle (sin red, servidor caído).
+    cerrarSesion().catch(() => {});
     localStorage.removeItem('thi_token');
     localStorage.removeItem('thi_usuario');
     setUsuario(null);

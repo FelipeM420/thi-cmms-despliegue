@@ -3,10 +3,11 @@
 // Sprint 1 · Gestión de Equipos y Acceso — HU1, HU2, HU3, HU24
 // Sprint 2 · Planificación del Mantenimiento — HU4, HU5, HU6, HU7, HU8
 // Sprint 3 · Ejecución del Mantenimiento — HU9, HU10, HU11, HU12, HU13
+// Sprint 4 · Órdenes de Trabajo y Alertas — HU14, HU15, HU16, HU17, HU18
+// Servicios externos (HU1: mantenimiento externo, base de HU19)
 // ============================================================================
-// Los modelos de Sprint 4 en adelante (OrdenDeTrabajo, Alerta) se añaden en
-// sus respectivos sprints, con relación hacia Equipo, Usuario y los modelos
-// de mantenimiento y ejecución ya definidos aquí.
+// Los modelos de Sprint 5 (indicadores y reportes) se apoyan en los datos ya
+// persistidos aquí; no requieren tablas nuevas salvo agregados de consulta.
 
 generator client {
   provider = "prisma-client-js"
@@ -97,6 +98,37 @@ enum MotivoNoEjecucion {
   OTRO
 }
 
+// HU1 / HU19 — naturaleza del mantenimiento contratado a un tercero. Junto con
+// el origen (interno o externo) da el "tipo de mantenimiento" con el que se
+// filtra el reporte de costos: Interno/Externo x Preventivo/Correctivo.
+enum NaturalezaServicioExterno {
+  PREVENTIVO
+  CORRECTIVO
+}
+
+// HU14 — ciclo de vida de una orden de trabajo.
+enum EstadoOrdenTrabajo {
+  EMITIDA
+  EN_PROCESO
+  CERRADA
+  CANCELADA
+}
+
+// HU17 — umbrales de anticipación del Product Backlog (15/8/1 días).
+// HU18 — VENCIDA para los mantenimientos cuya fecha expiró sin ejecutarse.
+enum TipoAlerta {
+  PREVENTIVA_15D
+  PREVENTIVA_8D
+  PREVENTIVA_1D
+  VENCIDA
+}
+
+enum EstadoAlerta {
+  PENDIENTE
+  LEIDA
+  RESUELTA
+}
+
 // ---------------------------------------------------------------------------
 // Modelos
 // ---------------------------------------------------------------------------
@@ -122,6 +154,17 @@ model Usuario {
 
   // Sprint 3 — Ejecución del mantenimiento
   ejecuciones RegistroEjecucion[] @relation("EjecucionTecnico")
+
+  // Sprint 4 — Órdenes de trabajo y alertas
+  ordenesAsignadas OrdenTrabajo[] @relation("OrdenTecnicoAsignado")
+  ordenesEmitidas  OrdenTrabajo[] @relation("OrdenEmitidaPor")
+  alertasRecibidas Alerta[]       @relation("AlertaTecnicoDestino")
+
+  // Servicios externos registrados por este usuario (auditoría de quién cargó cada costo).
+  serviciosExternosRegistrados ServicioExterno[] @relation("ServicioExternoRegistradoPor")
+
+  // Ley 1581 — aceptaciones del aviso de tratamiento de datos personales.
+  consentimientos ConsentimientoTratamiento[] @relation("ConsentimientoDeUsuario")
 
   @@map("usuarios")
 }
@@ -167,6 +210,13 @@ model Equipo {
   // en una ejecución (vínculo opcional; ver InsumoUtilizado).
   insumosUtilizados InsumoUtilizado[] @relation("InsumoDeEquipo")
 
+  // Sprint 4 — Órdenes de trabajo y alertas del equipo
+  ordenesTrabajo OrdenTrabajo[]
+  alertas        Alerta[]
+
+  // HU1 — hoja de vida: mantenimientos contratados a terceros.
+  serviciosExternos ServicioExterno[]
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
@@ -203,6 +253,7 @@ model TareaMantenimiento {
 
   planes                    PlanMantenimiento[]
   mantenimientosProgramados MantenimientoProgramado[]
+  ordenesTrabajo            OrdenTrabajo[]
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -260,7 +311,7 @@ model MantenimientoProgramado {
   tarea   TareaMantenimiento @relation(fields: [tareaId], references: [id])
 
   planId String?
-  plan   PlanMantenimiento? @relation(fields: [planId], references: [id])
+  plan   PlanMantenimiento? @relation(fields: [planId], references: [id], onDelete: Restrict)
 
   fechaProgramada DateTime
   prioridad       PrioridadMantenimiento        @default(MEDIA)
@@ -270,10 +321,10 @@ model MantenimientoProgramado {
 
   // HU7 — nulos hasta que el administrador asigna un técnico.
   tecnicoAsignadoId String?
-  tecnicoAsignado   Usuario? @relation("MantenimientoTecnicoAsignado", fields: [tecnicoAsignadoId], references: [id])
+  tecnicoAsignado   Usuario? @relation("MantenimientoTecnicoAsignado", fields: [tecnicoAsignadoId], references: [id], onDelete: Restrict)
 
   asignadoPorId String?
-  asignadoPor   Usuario? @relation("MantenimientoAsignadoPor", fields: [asignadoPorId], references: [id])
+  asignadoPor   Usuario? @relation("MantenimientoAsignadoPor", fields: [asignadoPorId], references: [id], onDelete: Restrict)
 
   fechaAsignacion DateTime?
 
@@ -284,8 +335,18 @@ model MantenimientoProgramado {
   // quedó NO_EJECUTADA no se reabre (su registro de ejecución ya es evidencia
   // cerrada); se clona en una ocurrencia nueva que apunta aquí.
   reprogramadoDeId String?
-  reprogramadoDe   MantenimientoProgramado?  @relation("Reprogramacion", fields: [reprogramadoDeId], references: [id])
+  reprogramadoDe   MantenimientoProgramado?  @relation("Reprogramacion", fields: [reprogramadoDeId], references: [id], onDelete: Restrict)
   reprogramaciones MantenimientoProgramado[] @relation("Reprogramacion")
+
+  // Sprint 4 — la OT formal que materializa este mantenimiento (1:1) y las
+  // alertas preventivas / de vencimiento del motor de HU17-HU18.
+  ordenTrabajo OrdenTrabajo?
+  alertas      Alerta[]
+
+  // HU1 — si esta ocurrencia del cronograma la realizó un proveedor externo,
+  // el servicio contratado queda ligado aquí (y el mantenimiento pasa a COMPLETADO
+  // sin RegistroEjecucion: no hubo técnico propio ni horas que medir).
+  servicioExterno ServicioExterno?
 
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -367,12 +428,12 @@ model InsumoUtilizado {
   id String @id @default(uuid())
 
   registroEjecucionId String
-  registroEjecucion   RegistroEjecucion @relation(fields: [registroEjecucionId], references: [id], onDelete: Cascade)
+  registroEjecucion   RegistroEjecucion @relation(fields: [registroEjecucionId], references: [id], onDelete: Restrict)
 
   descripcion String
 
   equipoInsumoId String?
-  equipoInsumo   Equipo? @relation("InsumoDeEquipo", fields: [equipoInsumoId], references: [id])
+  equipoInsumo   Equipo? @relation("InsumoDeEquipo", fields: [equipoInsumoId], references: [id], onDelete: Restrict)
 
   cantidad      Decimal  @db.Decimal(14, 2)
   unidad        String?
@@ -392,7 +453,7 @@ model TareaPendiente {
   id String @id @default(uuid())
 
   registroEjecucionId String
-  registroEjecucion   RegistroEjecucion @relation(fields: [registroEjecucionId], references: [id], onDelete: Cascade)
+  registroEjecucion   RegistroEjecucion @relation(fields: [registroEjecucionId], references: [id], onDelete: Restrict)
 
   descripcion String
   categoria   MotivoNoEjecucion
@@ -405,4 +466,173 @@ model TareaPendiente {
   @@index([registroEjecucionId])
   @@index([resuelta])
   @@map("tareas_pendientes")
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 4 · Órdenes de Trabajo y Alertas — HU14, HU15, HU16, HU17, HU18
+// ---------------------------------------------------------------------------
+
+// HU14 — Orden de trabajo formal. Se materializa desde un MantenimientoProgramado
+// (1:1) o se emite por solicitud directa. El consecutivo institucional tiene la
+// forma OT-<anio>-<numero> y se reinicia cada anio, por eso se guardan anio y
+// numero por separado ademas del texto ya formateado.
+model OrdenTrabajo {
+  id String @id @default(uuid())
+
+  consecutivo String @unique
+  anio        Int
+  numero      Int
+
+  // Nulo cuando la OT nace de una solicitud directa (sin cronograma previo).
+  mantenimientoProgramadoId String?                  @unique
+  mantenimientoProgramado   MantenimientoProgramado? @relation(fields: [mantenimientoProgramadoId], references: [id], onDelete: Restrict)
+
+  equipoId String
+  equipo   Equipo @relation(fields: [equipoId], references: [id])
+
+  tareaId String?
+  tarea   TareaMantenimiento? @relation(fields: [tareaId], references: [id], onDelete: Restrict)
+
+  tecnicoAsignadoId String?
+  tecnicoAsignado   Usuario? @relation("OrdenTecnicoAsignado", fields: [tecnicoAsignadoId], references: [id], onDelete: Restrict)
+
+  // Nulo cuando la OT la genera el sistema (HU14, emisión automática desde el
+  // cronograma): no hay ningún usuario que la haya emitido. La base de datos
+  // exige que una OT sin emisor sea AUTOMATICO. Restrict explícito: al volver
+  // opcional la relación, Prisma pasaría por defecto a SET NULL y borrar un
+  // usuario dejaría OT como si las hubiera emitido el sistema.
+  emitidaPorId String?
+  emitidaPor   Usuario? @relation("OrdenEmitidaPor", fields: [emitidaPorId], references: [id], onDelete: Restrict)
+
+  descripcion String?
+  prioridad   PrioridadMantenimiento @default(MEDIA)
+  estado      EstadoOrdenTrabajo     @default(EMITIDA)
+  origen      OrigenMantenimiento    @default(MANUAL)
+
+  fechaEmision    DateTime  @default(now())
+  fechaProgramada DateTime?
+  fechaCierre     DateTime?
+
+  observacionesCierre String?
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([anio, numero])
+  @@index([estado])
+  @@index([equipoId])
+  @@index([tecnicoAsignadoId])
+  @@index([fechaEmision])
+  @@map("ordenes_trabajo")
+}
+
+// HU17 — alertas preventivas a 15, 8 y 1 dia de la fecha programada.
+// HU18 — alerta VENCIDA cuando la fecha paso y el mantenimiento sigue sin
+// ejecutarse. La unicidad (mantenimiento, tipo) hace idempotente al motor:
+// re-ejecutarlo no duplica alertas.
+model Alerta {
+  id String @id @default(uuid())
+
+  tipo   TipoAlerta
+  estado EstadoAlerta @default(PENDIENTE)
+
+  mantenimientoProgramadoId String
+  mantenimientoProgramado   MantenimientoProgramado @relation(fields: [mantenimientoProgramadoId], references: [id], onDelete: Restrict)
+
+  equipoId String
+  equipo   Equipo @relation(fields: [equipoId], references: [id])
+
+  // Tecnico al que le corresponde la alerta; nulo si aun no hay asignacion
+  // (en ese caso solo la ve la administracion).
+  tecnicoDestinoId String?
+  tecnicoDestino   Usuario? @relation("AlertaTecnicoDestino", fields: [tecnicoDestinoId], references: [id], onDelete: Restrict)
+
+  mensaje          String
+  // Snapshot de la fecha del mantenimiento, para ordenar sin joins.
+  fechaProgramada  DateTime
+  // 15, 8 o 1 para las preventivas; nulo para VENCIDA.
+  diasAnticipacion Int?
+
+  leidaEn    DateTime?
+  resueltaEn DateTime?
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@unique([mantenimientoProgramadoId, tipo])
+  @@index([estado])
+  @@index([tipo])
+  @@index([tecnicoDestinoId])
+  @@index([fechaProgramada])
+  @@map("alertas")
+}
+
+// ---------------------------------------------------------------------------
+// HU1 · Mantenimiento externo (base de los costos de HU19)
+// ---------------------------------------------------------------------------
+
+// Servicio de mantenimiento o reparación contratado a un proveedor. Es un
+// modelo aparte de RegistroEjecucion porque el costo NO se calcula (horas x
+// tarifa + insumos): es el valor facturado por el proveedor, tal como llega.
+// La descripción es el texto explicativo del servicio y el informe del proveedor
+// (PDF: manual, garantía o certificado) queda en la hoja de vida del equipo.
+// Registro de retención: nada lo borra (onDelete Restrict en todas las
+// relaciones) y solo lo administra el rol ADMINISTRADOR.
+model ServicioExterno {
+  id String @id @default(uuid())
+
+  equipoId String
+  equipo   Equipo @relation(fields: [equipoId], references: [id], onDelete: Restrict)
+
+  // Opcional: el servicio cubre una ocurrencia del cronograma (preventivo
+  // tercerizado). A lo sumo un servicio por ocurrencia.
+  mantenimientoProgramadoId String?                  @unique
+  mantenimientoProgramado   MantenimientoProgramado? @relation(fields: [mantenimientoProgramadoId], references: [id], onDelete: Restrict)
+
+  proveedor   String
+  descripcion String
+  naturaleza  NaturalezaServicioExterno
+
+  // Se guarda a medianoche UTC, como el resto de fechas de calendario.
+  fechaServicio  DateTime
+  numeroFactura  String?
+  // El valor facturado por el proveedor; la base de datos exige que no sea negativo.
+  costoFacturado Decimal  @db.Decimal(14, 2)
+
+  informePdfUrl String?
+
+  registradoPorId String
+  registradoPor   Usuario @relation("ServicioExternoRegistradoPor", fields: [registradoPorId], references: [id], onDelete: Restrict)
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([equipoId, fechaServicio])
+  @@index([fechaServicio])
+  @@map("servicios_externos")
+}
+
+// ---------------------------------------------------------------------------
+// Ley 1581 de 2012 · Autorización para el tratamiento de datos personales
+// ---------------------------------------------------------------------------
+
+// Constancia de que un usuario aceptó una versión del aviso de tratamiento de
+// datos (firma de conformidad y fotografías de evidencia de la ejecución).
+// Es un registro de PRUEBA: solo admite altas. Un disparador de la base de datos
+// impide modificarlo o borrarlo, y cuando el aviso cambia se registra una
+// aceptación nueva de la versión nueva, sin tocar las anteriores. La revocación
+// de la autorización no se modela aquí: se atiende por el canal del responsable.
+model ConsentimientoTratamiento {
+  id String @id @default(uuid())
+
+  usuarioId String
+  usuario   Usuario @relation("ConsentimientoDeUsuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  // Identifica el texto aceptado (ver src/config/politicaDatos.js).
+  versionPolitica String
+  aceptadoEn      DateTime @default(now())
+
+  @@unique([usuarioId, versionPolitica])
+  @@index([usuarioId])
+  @@map("consentimientos_tratamiento")
 }

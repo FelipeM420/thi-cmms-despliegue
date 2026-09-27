@@ -10,7 +10,10 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "seed": "node prisma/seed.js"
+    "seed": "node prisma/seed.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:cobertura": "node --test --experimental-test-coverage \"test/**/*.test.js\"",
+    "test:integracion": "node --test --test-concurrency=1 \"test/integracion/*.bd.test.js\""
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",
@@ -21,7 +24,8 @@
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^2.4.0",
+    "pdfkit": "^0.20.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {

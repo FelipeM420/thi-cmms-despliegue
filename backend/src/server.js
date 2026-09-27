@@ -3,7 +3,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
 
 const authRoutes = require('./routes/auth.routes');
 const equiposRoutes = require('./routes/equipos.routes');
@@ -12,13 +11,27 @@ const tareasMantenimientoRoutes = require('./routes/tareasMantenimiento.routes')
 const planesMantenimientoRoutes = require('./routes/planesMantenimiento.routes');
 const mantenimientosProgramadosRoutes = require('./routes/mantenimientosProgramados.routes');
 const ejecucionesRoutes = require('./routes/ejecuciones.routes');
-const { registrarAuditoria } = require('./middleware/auditoria');
+const ordenesTrabajoRoutes = require('./routes/ordenesTrabajo.routes');
+const alertasRoutes = require('./routes/alertas.routes');
+const serviciosExternosRoutes = require('./routes/serviciosExternos.routes');
+const consentimientoRoutes = require('./routes/consentimiento.routes');
+const { registrarAuditoria, registrarAccesoArchivo, registrarEventoSistema } = require('./middleware/auditoria');
+const { manejadorErrores } = require('./middleware/manejoErrores');
+const { crearServidorArchivos } = require('./middleware/servidorArchivos');
+const { crearLimitadorEscrituras, crearLimitadorArchivos } = require('./middleware/limitadores');
+const { directorioUploads } = require('./config/uploads');
+const prisma = require('./config/prisma');
+const { generarAlertas } = require('./utils/alertas');
+const { generarOrdenesAutomaticas } = require('./utils/ordenesAutomaticas');
+const { validarSecretoJwt } = require('./config/secretoJwt');
 
-// ISO 25010 (Seguridad) — fail-fast: si falta un secreto de firma robusto,
-// el servidor ni siquiera arranca en vez de correr con una llave débil por
-// defecto (error común que deja producción con la clave de ejemplo del repo).
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
-  console.error('JWT_SECRET no está configurado o es demasiado corto (mínimo 16 caracteres). Revisa tu archivo .env.');
+// ISO 25010 (Seguridad) — fail-fast: si falta un secreto de firma robusto, o es
+// uno de ejemplo o uno que estuvo publicado en el repositorio, el servidor ni
+// siquiera arranca en vez de correr con una llave conocida.
+const validacionSecreto = validarSecretoJwt(process.env.JWT_SECRET);
+if (!validacionSecreto.valido) {
+  console.error(`${validacionSecreto.motivo} Revisa tu archivo .env.`);
+  console.error("Genera uno con: node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\"");
   process.exit(1);
 }
 
@@ -30,6 +43,10 @@ app.use(helmet());
 
 app.use(cors());
 app.use(express.json());
+
+// ISO 25010 (Seguridad) — tope de escrituras por IP ANTES de la bitácora: un
+// bucle de peticiones recibe 429 y no llena el disco con líneas de auditoría.
+app.use(crearLimitadorEscrituras());
 
 // Ley 1581 Art. 4 (Responsabilidad) / ISO 19011 (trazabilidad) — bitácora de
 // auditoría de toda operación de escritura, con quién la hizo y cuándo.
@@ -46,11 +63,21 @@ const limitadorLogin = rateLimit({
   legacyHeaders: false,
 });
 
-// Sirve las fotos/manuales subidos (Sprint 1 — almacenamiento local).
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Fotos, manuales y evidencias subidos (almacenamiento local). Solo con sesión:
+// ver middleware/servidorArchivos.js (cookie HttpOnly emitida al iniciar sesión).
+app.use(
+  '/uploads',
+  crearLimitadorArchivos(),
+  crearServidorArchivos({
+    prisma,
+    directorio: directorioUploads(),
+    secreto: process.env.JWT_SECRET,
+    registrarLectura: registrarAccesoArchivo,
+  })
+);
 
 app.get('/api/health', (req, res) => {
-  res.json({ estado: 'ok', servicio: 'thi-cmms-backend', sprints: [1, 2, 3] });
+  res.json({ estado: 'ok', servicio: 'thi-cmms-backend', sprints: [1, 2, 3, 4] });
 });
 
 app.use('/api/auth/login', limitadorLogin);
@@ -66,14 +93,69 @@ app.use('/api/mantenimientos-programados', mantenimientosProgramadosRoutes);
 // Sprint 3 — Ejecución del mantenimiento (HU9, HU10, HU11, HU12, HU13)
 app.use('/api/ejecuciones', ejecucionesRoutes);
 
-// Manejador de errores de multer y otros errores no capturados en rutas
-// (evita que un archivo inválido, p. ej., tumbe el proceso sin respuesta).
-app.use((err, req, res, next) => {
-  console.error('Error no controlado:', err.message);
-  res.status(400).json({ error: err.message || 'Error al procesar la solicitud.' });
-});
+// Sprint 4 — Ordenes de trabajo y alertas (HU14, HU15, HU16, HU17, HU18)
+app.use('/api/ordenes-trabajo', ordenesTrabajoRoutes);
+app.use('/api/alertas', alertasRoutes);
+
+// HU1 — mantenimiento externo (servicios contratados a proveedores)
+app.use('/api/servicios-externos', serviciosExternosRoutes);
+
+// Ley 1581 — aviso de tratamiento de datos personales y su aceptación
+app.use('/api/consentimiento', consentimientoRoutes);
+
+// Manejador central de errores (multer, JSON mal formado y todo lo que un
+// controlador deje escapar con asyncHandler). Rechazos del cliente -> 4xx con
+// su mensaje; fallos internos -> 500 genérico, sin filtrar detalles.
+app.use(manejadorErrores);
+
+// Los motores corren solos: una pasada al arrancar y otra cada 12 horas. Los dos
+// son idempotentes, asi que repetirlos no duplica nada.
+const INTERVALO_MOTORES_MS = 12 * 60 * 60 * 1000;
+
+// HU14 — cada OT consume un consecutivo institucional, asi que la generacion
+// automatica se puede apagar (GENERAR_OT_AUTOMATICAS=false) sin tocar el codigo.
+const GENERAR_OT_AUTOMATICAS = process.env.GENERAR_OT_AUTOMATICAS !== 'false';
+
+async function ejecutarMotorDeOrdenes() {
+  if (!GENERAR_OT_AUTOMATICAS) return;
+  try {
+    const { generadas, consecutivos } = await generarOrdenesAutomaticas(prisma, {
+      registrarEvento: registrarEventoSistema,
+      registrarError: (mensaje, error) => console.error(`Motor de OT: ${mensaje}:`, error.message),
+    });
+    if (generadas > 0) {
+      console.log(`Motor de OT: ${generadas} orden(es) de trabajo generada(s): ${consecutivos.join(', ')}.`);
+    }
+  } catch (error) {
+    // Un fallo del motor no debe tumbar el servidor: se reintenta al siguiente ciclo.
+    console.error('Motor de OT: no se pudo completar la generacion automatica:', error.message);
+  }
+}
+
+// HU17/HU18 — alertas preventivas y de vencimiento.
+
+async function ejecutarMotorDeAlertas() {
+  try {
+    const { generadas, revisados } = await generarAlertas(prisma);
+    if (generadas > 0) {
+      console.log(`Motor de alertas: ${generadas} alerta(s) generada(s) de ${revisados} mantenimientos revisados.`);
+    }
+  } catch (error) {
+    // Un fallo del motor no debe tumbar el servidor: se reintenta al
+    // siguiente ciclo.
+    console.error('Motor de alertas: no se pudo completar la generacion automatica:', error.message);
+  }
+}
+
+// Primero las OT y despues las alertas: ambas leen el cronograma, ninguna depende de la otra.
+async function ejecutarMotores() {
+  await ejecutarMotorDeOrdenes();
+  await ejecutarMotorDeAlertas();
+}
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`API del CMMS THI S.A.S. escuchando en http://localhost:${PORT}`);
+  ejecutarMotores();
+  setInterval(ejecutarMotores, INTERVALO_MOTORES_MS);
 });

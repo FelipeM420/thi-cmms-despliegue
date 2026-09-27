@@ -18,8 +18,11 @@ function verificarToken(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.usuario = payload; // { sub, nombre, rol }
+    // Solo HS256, el algoritmo con el que se firma: no se deja que el token
+    // elija otro.
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    req.usuario = payload; // { sub, nombre, rol, iat, exp }
+    req.token = token; // /auth/me lo necesita para renovar la cookie de archivos
     next();
   } catch (error) {
     return res.status(401).json({ error: 'Token inválido o expirado.' });

@@ -13,6 +13,7 @@ import Modal from '../../components/Modal';
 import PrioridadBadge from '../../components/PrioridadBadge';
 import EstadoMantenimientoBadge from '../../components/EstadoMantenimientoBadge';
 import ResumenEjecucion from './ResumenEjecucion';
+import { CasillaFirma, ArchivoEvidencia } from './CamposEvidencia';
 import { useAuth } from '../../context/AuthContext';
 import { listarEquipos } from '../../api/equipos';
 import {
@@ -50,7 +51,7 @@ const DATOS_VACIOS = {
   minutosTrabajados: '',
   numeroTecnicos: 1,
   observaciones: '',
-  firmaTecnico: '',
+  firmaConforme: false,
 };
 
 // Hoja de ejecución (HU9–HU13). Editable para el técnico asignado mientras el
@@ -127,7 +128,8 @@ export default function HojaEjecucionModal({
       minutosTrabajados: ejecucion.minutosTrabajados ?? '',
       numeroTecnicos: ejecucion.numeroTecnicos ?? 1,
       observaciones: ejecucion.observaciones ?? '',
-      firmaTecnico: ejecucion.firmaTecnico ?? usuario?.nombre ?? '',
+      // La firma la fija el servidor (usuario autenticado + hora real): aquí solo se marca o se retira.
+      firmaConforme: Boolean(ejecucion.firmaTecnico),
     });
     setValorHora(ejecucion.valorHoraManoObra != null ? String(ejecucion.valorHoraManoObra) : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -255,6 +257,7 @@ export default function HojaEjecucionModal({
             minutos={minutos}
             onGuardar={guardarDatos}
             ocupado={ocupado}
+            nombreFirmante={usuario?.nombre}
           />
 
           <SeccionInsumos
@@ -293,7 +296,7 @@ export default function HojaEjecucionModal({
 }
 
 // --- HU9 · HU10 — datos de la ejecución ----------------------------------
-function SeccionDatos({ datos, setDatos, archivos, setArchivos, valorHora, setValorHora, ejecucion, minutos, onGuardar, ocupado }) {
+function SeccionDatos({ datos, setDatos, archivos, setArchivos, valorHora, setValorHora, ejecucion, minutos, onGuardar, ocupado, nombreFirmante }) {
   const set = (k, v) => setDatos((d) => ({ ...d, [k]: v }));
   const setArchivo = (k, file) => setArchivos((a) => ({ ...a, [k]: file }));
 
@@ -343,10 +346,12 @@ function SeccionDatos({ datos, setDatos, archivos, setArchivos, valorHora, setVa
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3">
-        <div>
-          <label className={label}>Firma de conformidad</label>
-          <input className={input} value={datos.firmaTecnico} onChange={(e) => set('firmaTecnico', e.target.value)} />
-        </div>
+        <CasillaFirma
+          marcada={datos.firmaConforme}
+          onChange={(marcada) => set('firmaConforme', marcada)}
+          nombreFirmante={nombreFirmante}
+          firmaRegistrada={ejecucion.firmaTecnico}
+        />
         <ArchivoEvidencia
           etiqueta="Evidencia — antes"
           file={archivos.evidenciaAntes}
@@ -371,23 +376,6 @@ function SeccionDatos({ datos, setDatos, archivos, setArchivos, valorHora, setVa
         </button>
       </div>
     </section>
-  );
-}
-
-function ArchivoEvidencia({ etiqueta, file, urlActual, onChange }) {
-  return (
-    <div>
-      <label className={label}>{etiqueta}</label>
-      <label className="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-2 py-2.5 text-xs text-slate-500 hover:border-blue-400">
-        {file ? file.name : urlActual ? 'Reemplazar imagen' : 'Subir imagen'}
-        <input type="file" accept="image/*" className="hidden" onChange={(e) => onChange(e.target.files[0] || null)} />
-      </label>
-      {urlActual && !file && (
-        <a href={urlActual} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-medium text-blue-600">
-          Ver imagen actual
-        </a>
-      )}
-    </div>
   );
 }
 

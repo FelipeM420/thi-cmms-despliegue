@@ -67,6 +67,28 @@ const MOTIVOS_NO_EJECUCION = ['FALTA_INSUMOS', 'FALTA_PERSONAL', 'OTRO'];
 // terminales de EstadoMantenimientoProgramado que fija el cierre.
 const RESULTADOS_EJECUCION = ['COMPLETADO', 'NO_EJECUTADO'];
 
+// --- Sprint 4 · Ordenes de trabajo y alertas -------------------------------
+
+// HU14 — ciclo de vida de una orden de trabajo.
+const ESTADOS_ORDEN_TRABAJO = ['EMITIDA', 'EN_PROCESO', 'CERRADA', 'CANCELADA'];
+
+// HU17 (15/8/1 dias de anticipacion) y HU18 (vencidas).
+const TIPOS_ALERTA = ['PREVENTIVA_15D', 'PREVENTIVA_8D', 'PREVENTIVA_1D', 'VENCIDA'];
+
+const ESTADOS_ALERTA = ['PENDIENTE', 'LEIDA', 'RESUELTA'];
+
+// Umbrales de anticipacion del Product Backlog, de mayor a menor.
+const UMBRALES_ALERTA = [
+  { dias: 15, tipo: 'PREVENTIVA_15D' },
+  { dias: 8, tipo: 'PREVENTIVA_8D' },
+  { dias: 1, tipo: 'PREVENTIVA_1D' },
+];
+
+// --- HU1 · Mantenimiento externo -------------------------------------------
+
+// Naturaleza del servicio contratado a un tercero (HU1, base del filtro de HU19).
+const NATURALEZAS_SERVICIO_EXTERNO = ['PREVENTIVO', 'CORRECTIVO'];
+
 module.exports = {
   FRECUENCIAS,
   TIPOS_ACTIVO,
@@ -79,4 +101,9 @@ module.exports = {
   MOTIVOS_NO_EJECUCION,
   RESULTADOS_EJECUCION,
   UNIDADES_INSUMO,
+  ESTADOS_ORDEN_TRABAJO,
+  TIPOS_ALERTA,
+  ESTADOS_ALERTA,
+  UMBRALES_ALERTA,
+  NATURALEZAS_SERVICIO_EXTERNO,
 };
