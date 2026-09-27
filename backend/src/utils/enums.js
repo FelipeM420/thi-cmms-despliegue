@@ -84,6 +84,11 @@ const UMBRALES_ALERTA = [
   { dias: 1, tipo: 'PREVENTIVA_1D' },
 ];
 
+// --- HU1 · Mantenimiento externo -------------------------------------------
+
+// Naturaleza del servicio contratado a un tercero (HU1, base del filtro de HU19).
+const NATURALEZAS_SERVICIO_EXTERNO = ['PREVENTIVO', 'CORRECTIVO'];
+
 module.exports = {
   FRECUENCIAS,
   TIPOS_ACTIVO,
@@ -100,4 +105,5 @@ module.exports = {
   TIPOS_ALERTA,
   ESTADOS_ALERTA,
   UMBRALES_ALERTA,
+  NATURALEZAS_SERVICIO_EXTERNO,
 };
