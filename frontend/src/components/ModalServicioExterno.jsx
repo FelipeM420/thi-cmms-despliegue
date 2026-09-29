@@ -38,9 +38,11 @@ export default function ModalServicioExterno({ equipo, servicio, mantenimientosC
   const [guardando, setGuardando] = useState(false);
   const set = (clave, valor) => setCampos((c) => ({ ...c, [clave]: valor }));
 
-  // Un servicio ligado al cronograma es siempre preventivo.
+  // Un servicio ligado al cronograma conserva la naturaleza de la ocurrencia que
+  // cubre (HU19): solo se ofrecen las de su misma naturaleza, y ya no se cambia.
   const ligadoAlCronograma = editando && Boolean(servicio.mantenimientoProgramadoId);
-  const puedeCubrirCronograma = !editando && campos.naturaleza === 'PREVENTIVO' && mantenimientosCubribles.length > 0;
+  const cubriblesDeLaNaturaleza = mantenimientosCubribles.filter((m) => m.naturaleza === campos.naturaleza);
+  const puedeCubrirCronograma = !editando && cubriblesDeLaNaturaleza.length > 0;
 
   async function enviar(evento) {
     evento.preventDefault();
@@ -93,7 +95,7 @@ export default function ModalServicioExterno({ equipo, servicio, mantenimientosC
               disabled={ligadoAlCronograma}
               onChange={(e) => {
                 set('naturaleza', e.target.value);
-                if (e.target.value !== 'PREVENTIVO') set('mantenimientoProgramadoId', '');
+                set('mantenimientoProgramadoId', '');
               }}
               className={clase}
             >
@@ -173,7 +175,7 @@ export default function ModalServicioExterno({ equipo, servicio, mantenimientosC
               className={clase}
             >
               <option value="">Ninguno (servicio independiente)</option>
-              {mantenimientosCubribles.map((m) => (
+              {cubriblesDeLaNaturaleza.map((m) => (
                 <option key={m.id} value={m.id}>
                   {formatearFecha(m.fechaProgramada)} · {m.tarea?.nombre || 'Mantenimiento'}
                 </option>

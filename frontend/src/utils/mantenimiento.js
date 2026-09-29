@@ -77,7 +77,14 @@ export const ESTADOS_ALERTA = [
   ['RESUELTA', 'Resuelta'],
 ];
 
+// HU19 / HU20 — naturaleza del mantenimiento (interno o servicio externo).
+export const NATURALEZAS = [
+  ['PREVENTIVO', 'Preventivo'],
+  ['CORRECTIVO', 'Correctivo'],
+];
+
 const mapaDe = (pares) => Object.fromEntries(pares);
+export const ETIQUETA_NATURALEZA = mapaDe(NATURALEZAS);
 export const ETIQUETA_FRECUENCIA = mapaDe(FRECUENCIAS);
 export const ETIQUETA_PRIORIDAD = mapaDe(PRIORIDADES);
 export const ETIQUETA_ESTADO = mapaDe(ESTADOS_MANTENIMIENTO);

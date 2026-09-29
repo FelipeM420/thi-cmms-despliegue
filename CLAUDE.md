@@ -9,7 +9,7 @@ This repo covers **Sprint 1** (HU1-HU3, HU24), **Sprint 2** (HU4-HU8), **Sprint 
 and **Sprint 4** (HU14-HU18: Órdenes de trabajo y alertas).
 Between Sprint 4 and Sprint 5 there was a **hardening pass** (seguridad de archivos, HU1 mantenimiento externo, HU14 OT automáticas,
 consentimiento Ley 1581): see "Refuerzo previo a Sprint 5" below and `docs/adr/`.
-Next implementation phase is **Sprint 5** (HU19, HU20, HU21, HU22, HU23: Indicadores y reportes) — **not started**.
+**Sprint 5** (HU19-HU23: Indicadores y reportes) is **implemented on `feature/sprint-5-indicadores-reportes`**, pending review and close: see "Sprint 5" below and `docs/adr/0004`.
 Two independent npm projects, no workspace root: `backend/` (Node + Express + Prisma + PostgreSQL) and `frontend/` (React + Vite).
 
 ## Language convention
@@ -42,8 +42,8 @@ npm run preview
 ```
 
 ### Tests / lint
-- **Backend:** `npm test` corre `node:test` sobre `backend/test/**/*.test.js` (motores, archivos, consentimiento, límites, bitácora, manejo de errores y la paridad de
-  costos con el frontend). No usan la base de datos real ni la bitácora real (la de `auditoria.test.js` va a un archivo temporal); la suite de `test/integracion/`
+- **Backend:** `npm test` corre `node:test` sobre `backend/test/**/*.test.js` (motores, archivos, consentimiento, límites, bitácora, manejo de errores, indicadores
+  y reportes, y la paridad de costos y de periodos con el frontend). No usan la base de datos real ni la bitácora real (la de `auditoria.test.js` va a un archivo temporal); la suite de `test/integracion/`
   también entra en el patrón, pero se omite sola sin `THI_TEST_DATABASE_URL`. La lógica nueva se escribe con TDD (primero la prueba).
   Cobertura de `utils/`, `middleware/` y `config/`: ≈100 % de líneas (`npm run test:cobertura`).
 - **Integración (Postgres real):** `npm run test:integracion` corre `backend/test/integracion/*.bd.test.js` (OT ↔ mantenimiento, servicios
@@ -82,7 +82,7 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
   (`foto`/`manual`: cualquier sesión; `evidenciaAntes`/`evidenciaDespues`: el técnico de esa ejecución o el admin; `informe`: solo admin); `no-store` en lo sensible; cada acceso a evidencia queda en la bitácora.
 - **Audit log (Ley 1581)** — `src/middleware/auditoria.js` is global; on every `POST/PUT/PATCH/DELETE` it appends a JSON line to `src/logs/auditoria.log` on response `finish`. Keep working when adding write endpoints.
 - **Security posture (ISO 25010)** — `helmet`, `express-rate-limit` (10 login attempts / 15 min / IP on `/api/auth/login`; además `src/middleware/limitadores.js`: 1000 escrituras / 15 min / IP
-  **antes** de la bitácora, para que un bucle de peticiones no la llene, y 2000 peticiones / 5 min / IP a `/uploads`), bcrypt password hashes, JWT solo HS256, y arranque que falla si
+  **antes** de la bitácora, para que un bucle de peticiones no la llene, 2000 peticiones / 5 min / IP a `/uploads` y 120 consultas / 5 min / IP a `/api/reportes`), bcrypt password hashes, JWT solo HS256, y arranque que falla si
   `JWT_SECRET` falta, es corto (< 32), es de ejemplo, es predecible (fragmento repetido, secuencia o < 128 bits estimados) o coincide con la huella SHA-256 de uno que estuvo publicado,
   aunque venga entre comillas o con espacios (`src/config/secretoJwt.js`).
   `seed.js` se niega a correr con `NODE_ENV=production` salvo `PERMITIR_SEED_EN_PRODUCCION=si`.
@@ -104,6 +104,13 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
 - **Firma de conformidad (HU9)** — `src/utils/firmaConformidad.js`. El cliente solo envía `firmaConforme` (true/false); el servidor escribe `"<Nombre> — AAAA-MM-DD HH:mm (hora de Colombia)"` con el usuario autenticado y conserva la primera firma. Un `firmaTecnico` enviado por el cliente se ignora.
   Solo el técnico asignado pone o retira la firma (el administrador recibe 403 si intenta cambiarla; si no la cambia, guarda lo demás).
 - **Límites de la ejecución** — `src/utils/limitesEjecucion.js`: minutos ≤ 1 mes, técnicos ≤ 50, montos ≤ DECIMAL(14,2), también la línea de insumo y el costo total al finalizar. Un valor que no cabe responde 400, no 500.
+- **Reportes (Sprint 5, HU19-HU23)** — `src/controllers/reportes.controller.js`, `GET /api/reportes/{resumen,costos,equipos,areas,recursos,historial}`, solo `ADMINISTRADOR`,
+  `?formato=csv` para exportar. El controlador solo lee (tope `MAX_REGISTROS_REPORTE` = 20 000 filas por fuente: más → 400 "acorta el periodo") y delega en funciones puras:
+  `utils/intervenciones.js` (ejecución interna finalizada o servicio externo → una "intervención" común), `utils/indicadores.js` (HU19-HU21 y cumplimiento del plan),
+  `utils/recursos.js` (HU22), `utils/historial.js` (HU23: fusiona las dos fuentes leyendo `pagina × limite` de cada una, ventana máxima 5000), `utils/periodos.js`,
+  `utils/dinero.js` (suma en centavos enteros), `utils/normalizacion.js` (agrupa `zona` y descripciones sin tildes, mayúsculas ni espacios; muestra la escritura más usada)
+  y `utils/csv.js` + `utils/reportesCsv.js` (BOM, `;`, coma decimal, celdas que empiezan por `= + - @` neutralizadas). Ver `docs/adr/0004`.
+  **Fecha de referencia:** la de ejecución (`fechaEjecucion`, día de Colombia) para lo interno; `fechaServicio` para lo externo. Solo cuentan ejecuciones **finalizadas** (costo congelado).
 - **Query validation** — `src/utils/consultas.js` valida los filtros de query con Zod (`enumOpc`, `fechaOpc`, `textoOpc`, `booleanoOpc`): un valor inválido responde 400, no un 500 opaco desde Prisma.
 
 ### Data model (`prisma/schema.prisma`)
@@ -130,14 +137,17 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
   - `OrdenTrabajo.emitidaPorId` es opcional: nulo = emitida por el sistema (CHECK: solo si `origen = AUTOMATICO`).
   - `ConsentimientoTratamiento` (Ley 1581): quién aceptó qué versión y cuándo; `@@unique([usuarioId, versionPolitica])`; disparador que impide `UPDATE` y `DELETE`.
   - **Ninguna clave foránea borra ni anula en cascada** (todas `RESTRICT`): la trazabilidad no se pierde por borrar un padre. La aplicación solo borra filas hoja (`eliminarInsumo`, `eliminarPendiente`).
-- **Sprint 5** (indicadores y reportes) se apoya en los datos ya persistidos; no requiere tablas nuevas.
+- **Sprint 5** (migración `naturaleza_mantenimiento_e_indice_insumos`, SQL escrito a mano): sin tablas nuevas.
+  - El enum `NaturalezaServicioExterno` pasó a `NaturalezaMantenimiento` (`RENAME TYPE`, sin perder datos) y `MantenimientoProgramado.naturaleza` (default `PREVENTIVO`) distingue el correctivo interno (HU19/HU20).
+    Lo que genera un plan de frecuencia es preventivo. Un servicio externo solo cubre una ocurrencia de su misma naturaleza, y la naturaleza de un servicio que ya cubre una no se cambia (409).
+  - Índice `insumos_utilizados(equipoInsumoId)` (HU22 agrupa por él).
 
 ## Frontend architecture
 
 React 18 + Vite 6 + React Router **v7** + Tailwind + axios. No TypeScript, no external state library.
 
 - **Auth state** — `src/context/AuthContext.jsx` holds `usuario` y mirrors it + JWT into `localStorage` (`thi_token`, `thi_usuario`).
-- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`, `src/api/ordenesTrabajo.js`, `src/api/alertas.js`, `src/api/serviciosExternos.js`, `src/api/consentimiento.js`.
+- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`, `src/api/ordenesTrabajo.js`, `src/api/alertas.js`, `src/api/serviciosExternos.js`, `src/api/consentimiento.js`, `src/api/reportes.js` (incluye la descarga CSV como blob).
 - **Alertas context** — `src/context/AlertasContext.jsx` mantiene el contador de alertas pendientes (refresco cada 60 s) que consume el badge de la campana en `TopBar.jsx`. Las vistas llaman a `refrescar()` tras mutar alertas.
 - **Consentimiento** — `src/components/ConsentimientoGate.jsx` envuelve todas las rutas: tras iniciar sesión muestra el aviso de tratamiento de datos (bloqueante, sin cerrar con el fondo) hasta que se acepta o se cierra sesión.
 - **Servicios externos (HU1)** — `src/components/ServiciosExternos.jsx` y `ModalServicioExterno.jsx`, dentro de `/equipos/:id` y solo para el administrador.
@@ -148,24 +158,22 @@ React 18 + Vite 6 + React Router **v7** + Tailwind + axios. No TypeScript, no ex
     - Técnico: vista directa `Mis Tareas` (HU8) con acciones para iniciar, registrar ejecución y ver resumen (`HojaEjecucionModal`, `ResumenEjecucion`).
   - `/ordenes-trabajo` (`OrdenesTrabajoView.jsx`): historial con filtros, emisión (admin), ciclo de vida y descarga de PDF (HU14-HU16). El técnico solo ve las órdenes que tiene asignadas.
   - `/alertas` (`AlertasView.jsx`): centro de alertas con tarjetas por severidad, filtros, gestión de leídas/resueltas y disparo del motor (admin) (HU17-HU18).
-- **Deliberately stubbed** — `/dashboard` y `/reportes` all render `<Proximamente titulo=... sprint=... />`. **Do not build these out until their respective sprint arrives.**
+  - `/dashboard` (`Dashboard.jsx`): el administrador ve los indicadores del año (`/api/reportes/resumen`: cumplimiento del plan preventivo, costos por tipo, OT abiertas, alertas, top de equipos y áreas);
+    el técnico ve su trabajo de hoy, lo atrasado y sus próximas tareas (APIs existentes, sin costos).
+  - `/reportes` (`Reportes.jsx`, **solo administrador**, también oculto en el menú del técnico): pestañas Costos (HU19, por año y trimestre), Horas por equipo (HU20), Áreas (HU21),
+    Recursos (HU22) e Historial (HU23, paginado y con filtros), cada una con exportación CSV. Componentes en `src/components/reportes/` (tarjetas, barras con Tailwind **sin librería de gráficos**,
+    tabla, selector de periodo). `src/utils/reportes.js` arma los periodos rápidos con el mismo criterio del backend (`paridad-periodos.test.js`).
+- **Naturaleza** — `NaturalezaBadge.jsx`; el alta manual del cronograma (`pages/mantenimiento/FormNuevoMantenimiento.jsx`) pide preventivo o correctivo.
 
-## Guidelines for Sprint 5 (Next Step)
+## Sprint 5 (Indicadores y reportes)
 
-When working on **Sprint 5 (Indicadores y Reportes)** — reemplaza los stubs `/dashboard` y `/reportes`:
-1. **HU19 (Costos por mantenimiento)**: reporte trimestral y anual agregando `RegistroEjecucion.costoTotal`.
-2. **HU20 (Horas por equipo)**: ranking de equipos por `minutosTrabajados` acumulados.
-3. **HU21 (Áreas intervenidas)**: reporte por `Equipo.zona`.
-4. **HU22 (Consumo de recursos)**: agregados sobre `InsumoUtilizado` y mano de obra.
-5. **HU23 (Historial de registros)**: persistencia ya garantizada; falta la vista de consulta histórica.
+1. **HU19 (Costos)**: por trimestre y año, por tipo **Interno/Externo × Preventivo/Correctivo**; lo interno desglosa mano de obra e insumos.
+2. **HU20 (Horas por equipo)**: ranking por minutos trabajados (o por fallas = correctivos); un servicio externo cuenta como intervención sin horas.
+3. **HU21 (Áreas)**: por `Equipo.zona` normalizada.
+4. **HU22 (Recursos)**: insumos agrupados por ficha de inventario (`equipoInsumoId`) o, si se escribieron a mano, por descripción normalizada + unidad; mano de obra por técnico en horas-hombre.
+5. **HU23 (Historial)**: ejecuciones finalizadas y servicios externos, del más reciente al más antiguo, `{ items, total, pagina, limite, periodo }`.
 
-No se prevén tablas nuevas: los datos ya están en `RegistroEjecucion`, `InsumoUtilizado`, `OrdenTrabajo` y `Alerta`.
-El endpoint `GET /api/ejecuciones` (solo administrador, con filtros) es la base natural de estos reportes, **pero no tiene paginación**:
-los reportes y el historial (HU23) usan endpoints propios (`reportes.controller.js`, solo `ADMINISTRADOR`) con agregados `groupBy` de Prisma y límite máximo.
-
-**Convenciones para Sprint 5:** lógica de agregación como funciones puras en `src/utils/` con TDD; respuesta como el resto de la API
-(recurso directo, error `{ error }`); listados paginados como `{ items, total, pagina, limite }`; fechas de periodo (trimestre/año)
-en hora de Colombia (UTC-5), porque el resto de las fechas se guarda a medianoche UTC.
+Periodo: `?desde=&hasta=` (AAAA-MM-DD, días de Colombia, máximo 3660 días); sin fechas, el año en curso hasta hoy.
 
 ### Decisiones con el Product Owner (estado tras el refuerzo)
 1. **HU1 → HU19: mantenimiento externo — respondida e implementada.** Se registra el valor facturado, la descripción y el informe PDF, ligados a la hoja de vida del equipo
@@ -175,10 +183,9 @@ en hora de Colombia (UTC-5), porque el resto de las fechas se guarda a medianoch
    datos sensibles, con consentimiento previo y uso exclusivo de auditoría y control del mantenimiento (`docs/adr/0003`). **No hay purga automática**: nada borra evidencia. Falta: revisión del texto del aviso,
    inscripción en el RNBD si aplica, cita normativa exacta del plazo y procedimiento para revocar la autorización.
 
-### Calidad de datos que Sprint 5 necesita
-- `Equipo.zona` es texto libre: HU21 se fragmenta por tildes o mayúsculas. Normalizar (o catálogo) antes de agrupar.
-- `InsumoUtilizado.descripcion` es texto libre y `equipoInsumoId` es opcional: HU22 debe agrupar por `equipoInsumoId` y solo caer a la descripción normalizada si falta.
-- `valorHoraManoObra` se digita libre en cada ejecución (es obligatorio al completar): los costos entre técnicos no son comparables. Valorar una tarifa configurable que prellene el campo.
+### Calidad de datos (Sprint 5)
+- `Equipo.zona` e `InsumoUtilizado.descripcion` siguen siendo texto libre: los reportes los **normalizan al leer** (no se reescriben datos). Un catálogo de zonas sigue siendo la solución de fondo.
+- `valorHoraManoObra` se digita libre en cada ejecución: los costos de mano de obra entre técnicos no son comparables. Una tarifa configurable queda **pendiente del Product Owner**.
 
 ### Deuda conocida al cerrar Sprint 4
 - **Motor de alertas:** `server.js` lo ejecuta al arrancar y cada 12 h con un temporizador dentro del proceso (además del botón de la UI y `POST /api/alertas/generar`).
@@ -191,7 +198,7 @@ en hora de Colombia (UTC-5), porque el resto de las fechas se guarda a medianoch
   y solo es `Secure` con `NODE_ENV=production`; las fotos conservan sus metadatos EXIF (GPS, dispositivo); editar un servicio externo no guarda el valor anterior (dato contable);
   el informe PDF se sirve `inline`; sin `app.set('trust proxy')` todos los usuarios detrás de un proxy comparten el límite por IP (también el del login);
   el disparador de consentimientos no bloquea `TRUNCATE` ni al dueño de la base (usar un rol de aplicación sin esos permisos); el CHECK de textos de `servicios_externos` solo recorta espacios.
-- **Antes de Sprint 5 (base de datos):** índice sobre `insumos_utilizados.equipoInsumoId` (HU22 agrupa por él) y paginar `GET /api/ordenes-trabajo` (el motor hará crecer la tabla).
+- **Base de datos:** paginar `GET /api/ordenes-trabajo` (el motor hará crecer la tabla). El índice de `insumos_utilizados.equipoInsumoId` ya se creó en Sprint 5.
   Para contar "OT emitidas por el sistema" usar `emitidaPorId IS NULL`, **no** `origen = AUTOMATICO`: una OT que el administrador materializa desde el cronograma también lleva `AUTOMATICO`.
 - **`activo` de usuario:** el middleware de sesión no consulta `Usuario.activo` en cada petición (solo el login, `/auth/me` y el servicio de `/uploads`); un usuario desactivado conserva su token hasta que expire (8 h).
 - **Mantenibilidad:** ~48 bloques `try/catch` casi idénticos en los controladores; `HojaEjecucionModal.jsx` (759 líneas; la firma y las evidencias ya se extrajeron a `CamposEvidencia.jsx`), `TareasYPlanesView.jsx`, `CronogramaView.jsx`,

@@ -10,15 +10,17 @@ const FORMATO_COSTO = /^\d{1,12}([.,]\d{1,2})?$/;
 
 /**
  * Comprueba si un servicio externo puede cubrir una ocurrencia del cronograma
- * (un preventivo que se tercerizó en vez de hacerse con técnico propio).
+ * (un mantenimiento que se tercerizó en vez de hacerse con técnico propio). El
+ * servicio conserva la naturaleza de la ocurrencia: HU19 no debe contar como
+ * correctivo lo que se programó como preventivo, ni al revés.
  * @returns {string|null} el motivo del rechazo, o null si es válido
  */
 function validarVinculoCronograma(mantenimiento, { equipoId, naturaleza }) {
   if (mantenimiento.equipoId !== equipoId) {
     return 'El mantenimiento programado pertenece a otro equipo.';
   }
-  if (naturaleza !== 'PREVENTIVO') {
-    return 'Un servicio que cubre una ocurrencia del cronograma es preventivo.';
+  if (naturaleza !== mantenimiento.naturaleza) {
+    return `La naturaleza del servicio debe coincidir con la del mantenimiento que cubre (${mantenimiento.naturaleza}).`;
   }
   if (!ESTADOS_CUBRIBLES.includes(mantenimiento.estado)) {
     return `Solo se cubre con un servicio externo un mantenimiento PROGRAMADO o ASIGNADO (estado actual: ${mantenimiento.estado}).`;

@@ -4,7 +4,12 @@
 // por el administrador (origen MANUAL) o materializado por un plan (HU6).
 const { z } = require('zod');
 const prisma = require('../config/prisma');
-const { PRIORIDADES, ESTADOS_MANTENIMIENTO, ESTADOS_EDITABLES_PLANIFICACION } = require('../utils/enums');
+const {
+  PRIORIDADES,
+  ESTADOS_MANTENIMIENTO,
+  ESTADOS_EDITABLES_PLANIFICACION,
+  NATURALEZAS_MANTENIMIENTO,
+} = require('../utils/enums');
 const { textoOpc, fechaOpc, enumOpc } = require('../utils/consultas');
 const { operacionesOrden } = require('../utils/ordenesTrabajo');
 
@@ -24,6 +29,12 @@ const crearSchema = z.object({
   fechaProgramada: z.coerce.date({ errorMap: () => ({ message: 'La fecha programada no es válida.' }) }),
   prioridad: z.enum(PRIORIDADES).default('MEDIA'),
   notas: z.string().optional(),
+  // HU19 / HU20 — un correctivo es una falla que se atiende; lo que sale de un plan es preventivo.
+  naturaleza: z
+    .enum(NATURALEZAS_MANTENIMIENTO, {
+      errorMap: () => ({ message: `La naturaleza debe ser: ${NATURALEZAS_MANTENIMIENTO.join(' o ')}.` }),
+    })
+    .default('PREVENTIVO'),
 });
 
 // La edición no permite mover el mantenimiento a otro equipo/tarea, ni pasar a
@@ -57,6 +68,7 @@ const filtrosCronogramaSchema = z.object({
   tecnico: textoOpc,
   estado: enumOpc(ESTADOS_MANTENIMIENTO, 'estado'),
   prioridad: enumOpc(PRIORIDADES, 'prioridad'),
+  naturaleza: enumOpc(NATURALEZAS_MANTENIMIENTO, 'naturaleza'),
   desde: fechaOpc('desde'),
   hasta: fechaOpc('hasta'),
 });
@@ -90,7 +102,7 @@ function filtrosDeFecha(desde, hasta) {
   return Object.keys(rango).length ? { fechaProgramada: rango } : {};
 }
 
-// GET /api/mantenimientos-programados?buscar=&equipo=&estado=&tecnico=&prioridad=&desde=&hasta=
+// GET /api/mantenimientos-programados?buscar=&equipo=&estado=&tecnico=&prioridad=&naturaleza=&desde=&hasta=
 // Vista de cronograma. El rango de fechas es opcional: cuando el cliente
 // aplica filtros los omite, para que la búsqueda cubra todas las fechas y no
 // solo el mes visible en el calendario.
@@ -100,7 +112,7 @@ async function listar(req, res) {
   if (!filtros.success) {
     return res.status(400).json({ error: filtros.error.issues[0].message });
   }
-  const { buscar, equipo, estado, tecnico, prioridad, desde, hasta } = filtros.data;
+  const { buscar, equipo, estado, tecnico, prioridad, naturaleza, desde, hasta } = filtros.data;
 
   try {
 
@@ -116,6 +128,7 @@ async function listar(req, res) {
               : { tecnicoAsignadoId: String(tecnico) }
             : {},
           prioridad ? { prioridad: String(prioridad) } : {},
+          naturaleza ? { naturaleza } : {},
           filtroDeBusqueda(buscar),
           filtrosDeFecha(desde, hasta),
         ],
@@ -366,6 +379,7 @@ async function reprogramar(req, res) {
         prioridad: parseo.data.prioridad ?? original.prioridad,
         notas: parseo.data.notas ?? original.notas,
         origen: original.origen,
+        naturaleza: original.naturaleza,
         estado: tecnicoAsignadoId ? 'ASIGNADO' : 'PROGRAMADO',
         tecnicoAsignadoId,
         asignadoPorId: tecnicoAsignadoId ? req.usuario.sub : null,

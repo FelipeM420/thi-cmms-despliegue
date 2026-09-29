@@ -9,7 +9,8 @@ import EquipoDetalle from './pages/EquipoDetalle';
 import Mantenimiento from './pages/Mantenimiento';
 import OrdenesTrabajoView from './pages/OrdenesTrabajoView';
 import AlertasView from './pages/AlertasView';
-import Proximamente from './pages/Proximamente';
+import Dashboard from './pages/Dashboard';
+import Reportes from './pages/Reportes';
 
 export default function App() {
   const { usuario } = useAuth();
@@ -37,9 +38,9 @@ export default function App() {
         {/* HU17–HU18 — Sprint 4: alertas preventivas y vencidas */}
         <Route path="/alertas" element={<ProtectedRoute><AlertasView /></ProtectedRoute>} />
 
-        {/* Módulos de sprints siguientes — diseño ya validado en Figma */}
-        <Route path="/dashboard" element={<ProtectedRoute><Proximamente titulo="Dashboard" sprint="Sprint 5" /></ProtectedRoute>} />
-        <Route path="/reportes" element={<ProtectedRoute><Proximamente titulo="Reportes" sprint="Sprint 5" /></ProtectedRoute>} />
+        {/* HU19–HU23 — Sprint 5: dashboard (según el rol) y reportes (solo administrador) */}
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/reportes" element={<ProtectedRoute soloAdmin><Reportes /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to={usuario ? '/equipos' : '/login'} replace />} />
       </Routes>

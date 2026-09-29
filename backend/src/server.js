@@ -15,6 +15,7 @@ const ordenesTrabajoRoutes = require('./routes/ordenesTrabajo.routes');
 const alertasRoutes = require('./routes/alertas.routes');
 const serviciosExternosRoutes = require('./routes/serviciosExternos.routes');
 const consentimientoRoutes = require('./routes/consentimiento.routes');
+const reportesRoutes = require('./routes/reportes.routes');
 const { registrarAuditoria, registrarAccesoArchivo, registrarEventoSistema } = require('./middleware/auditoria');
 const { manejadorErrores } = require('./middleware/manejoErrores');
 const { crearServidorArchivos } = require('./middleware/servidorArchivos');
@@ -102,6 +103,9 @@ app.use('/api/servicios-externos', serviciosExternosRoutes);
 
 // Ley 1581 — aviso de tratamiento de datos personales y su aceptación
 app.use('/api/consentimiento', consentimientoRoutes);
+
+// Sprint 5 — indicadores y reportes (HU19-HU23), solo administrador
+app.use('/api/reportes', reportesRoutes);
 
 // Manejador central de errores (multer, JSON mal formado y todo lo que un
 // controlador deje escapar con asyncHandler). Rechazos del cliente -> 4xx con

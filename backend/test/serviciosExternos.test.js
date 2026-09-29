@@ -10,6 +10,7 @@ const { cambiosDeOrdenPorEvento } = require('../src/utils/ordenesTrabajo');
 const mantenimientoLibre = (extra = {}) => ({
   equipoId: 'eq-1',
   estado: 'ASIGNADO',
+  naturaleza: 'PREVENTIVO',
   registroEjecucion: null,
   servicioExterno: null,
   ...extra,
@@ -30,9 +31,16 @@ test('no cubre una ocurrencia de otro equipo', () => {
   assert.match(motivo, /otro equipo/i);
 });
 
-test('una ocurrencia del cronograma es preventiva: un servicio correctivo no puede cubrirla', () => {
+test('un servicio correctivo no cubre una ocurrencia preventiva del cronograma', () => {
   const motivo = validarVinculoCronograma(mantenimientoLibre(), { equipoId: 'eq-1', naturaleza: 'CORRECTIVO' });
+  assert.match(motivo, /naturaleza/i);
   assert.match(motivo, /preventivo/i);
+});
+
+test('un correctivo interno programado se puede tercerizar con un servicio correctivo (Sprint 5)', () => {
+  const correctivo = mantenimientoLibre({ naturaleza: 'CORRECTIVO' });
+  assert.equal(validarVinculoCronograma(correctivo, { equipoId: 'eq-1', naturaleza: 'CORRECTIVO' }), null);
+  assert.match(validarVinculoCronograma(correctivo, { equipoId: 'eq-1', naturaleza: 'PREVENTIVO' }), /correctivo/i);
 });
 
 test('no cubre una ocurrencia que ya empezó, terminó o se canceló', () => {

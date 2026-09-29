@@ -30,7 +30,7 @@ const CORRESPONDENCIAS = {
   EstadoOrdenTrabajo: 'ESTADOS_ORDEN_TRABAJO',
   TipoAlerta: 'TIPOS_ALERTA',
   EstadoAlerta: 'ESTADOS_ALERTA',
-  NaturalezaServicioExterno: 'NATURALEZAS_SERVICIO_EXTERNO',
+  NaturalezaMantenimiento: 'NATURALEZAS_MANTENIMIENTO',
 };
 
 for (const [enumPrisma, constante] of Object.entries(CORRESPONDENCIAS)) {

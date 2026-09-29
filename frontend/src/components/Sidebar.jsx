@@ -8,14 +8,15 @@ const NAV_ITEMS = [
   { to: '/mantenimiento', label: 'Mantenimiento', Icon: CalendarClock },
   { to: '/ordenes-trabajo', label: 'Órdenes de Trabajo', Icon: ClipboardList },
   { to: '/alertas', label: 'Alertas', Icon: Bell },
-  { to: '/reportes', label: 'Reportes', Icon: BarChart3 },
+  // Sprint 5 — los reportes son información contable: solo el administrador.
+  { to: '/reportes', label: 'Reportes', Icon: BarChart3, soloAdmin: true },
 ];
 
 export default function Sidebar() {
   const { usuario, logout } = useAuth();
   const esAdmin = usuario?.rol === 'ADMINISTRADOR';
   // Para el técnico, /mantenimiento es su vista "Mis tareas" (HU8).
-  const navItems = NAV_ITEMS.map((item) =>
+  const navItems = NAV_ITEMS.filter((item) => esAdmin || !item.soloAdmin).map((item) =>
     item.to === '/mantenimiento' && !esAdmin ? { ...item, label: 'Mis Tareas' } : item
   );
   const iniciales = usuario?.nombre

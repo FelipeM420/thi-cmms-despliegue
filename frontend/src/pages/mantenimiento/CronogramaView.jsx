@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, FileText, Search, RotateCcw, X } from 'lucide-react';
 import PrioridadBadge from '../../components/PrioridadBadge';
 import EstadoMantenimientoBadge from '../../components/EstadoMantenimientoBadge';
+import NaturalezaBadge from '../../components/NaturalezaBadge';
 import Modal from '../../components/Modal';
 import HojaEjecucionModal from './HojaEjecucionModal';
+import FormNuevoMantenimiento from './FormNuevoMantenimiento';
 import { listarEquipos } from '../../api/equipos';
 import {
   listarCronograma,
-  crearMantenimiento,
   actualizarMantenimiento,
   asignarTecnico,
   reprogramarMantenimiento,
@@ -372,7 +373,10 @@ export default function CronogramaView() {
                     <td className="px-5 py-3.5 font-medium text-slate-900">
                       {it.equipo?.referencia} · {it.equipo?.nombre}
                     </td>
-                    <td className="px-5 py-3.5 text-slate-600">{it.tarea?.nombre}</td>
+                    <td className="px-5 py-3.5 text-slate-600">
+                      {it.tarea?.nombre}
+                      {it.naturaleza === 'CORRECTIVO' && <span className="ml-2"><NaturalezaBadge naturaleza={it.naturaleza} /></span>}
+                    </td>
                     <td className="px-5 py-3.5"><PrioridadBadge prioridad={it.prioridad} /></td>
                     <td className="px-5 py-3.5"><EstadoMantenimientoBadge estado={it.estado} /></td>
                     <td className="px-5 py-3.5 text-slate-600">
@@ -427,94 +431,6 @@ export default function CronogramaView() {
   );
 }
 
-// --- Formulario de alta manual (HU5) ---------------------------------------
-function FormNuevoMantenimiento({ equipos, tareas, fechaInicial, onClose, onCreado }) {
-  const [campos, setCampos] = useState({
-    equipoId: '',
-    tareaId: '',
-    fechaProgramada: fechaInicial,
-    prioridad: 'MEDIA',
-    notas: '',
-  });
-  const [error, setError] = useState('');
-  const [guardando, setGuardando] = useState(false);
-
-  const set = (k, v) => setCampos((c) => ({ ...c, [k]: v }));
-  const input = 'w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
-  const label = 'text-slate-700 text-sm font-medium block mb-1.5';
-
-  async function enviar(e) {
-    e.preventDefault();
-    setError('');
-    setGuardando(true);
-    try {
-      await crearMantenimiento(campos);
-      onCreado();
-    } catch (err) {
-      setError(err.response?.data?.error || 'No se pudo programar el mantenimiento.');
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  return (
-    <Modal titulo="Programar mantenimiento" onClose={onClose}>
-      {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
-      <form onSubmit={enviar} className="flex flex-col gap-4">
-        <div>
-          <label className={label}>Equipo</label>
-          <select required className={input} value={campos.equipoId} onChange={(e) => set('equipoId', e.target.value)}>
-            <option value="">Selecciona un equipo…</option>
-            {equipos.map((eq) => (
-              <option key={eq.id} value={eq.id}>{eq.referencia} · {eq.nombre}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className={label}>Tarea de mantenimiento</label>
-          <select required className={input} value={campos.tareaId} onChange={(e) => set('tareaId', e.target.value)}>
-            <option value="">Selecciona una tarea…</option>
-            {tareas.map((t) => (
-              <option key={t.id} value={t.id}>{t.nombre}</option>
-            ))}
-          </select>
-          {tareas.length === 0 && (
-            <p className="mt-1 text-xs text-amber-600">
-              No hay tareas en el catálogo. Créalas primero en la pestaña «Tareas y planes».
-            </p>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={label}>Fecha programada</label>
-            <input type="date" required className={input} value={campos.fechaProgramada} onChange={(e) => set('fechaProgramada', e.target.value)} />
-          </div>
-          <div>
-            <label className={label}>Prioridad</label>
-            <select className={input} value={campos.prioridad} onChange={(e) => set('prioridad', e.target.value)}>
-              {PRIORIDADES.map(([v, t]) => (
-                <option key={v} value={v}>{t}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div>
-          <label className={label}>Notas (opcional)</label>
-          <textarea rows={2} className={input} value={campos.notas} onChange={(e) => set('notas', e.target.value)} />
-        </div>
-        <div className="flex justify-end gap-3 pt-1">
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600">
-            Cancelar
-          </button>
-          <button type="submit" disabled={guardando} className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
-            {guardando ? 'Guardando…' : 'Programar'}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
 // --- Detalle + asignación (HU5/HU7) --------------------------------------
 function DetalleMantenimiento({ item, tecnicos, onClose, onCambio, onVerHoja, onReprogramado }) {
   const [nuevaFecha, setNuevaFecha] = useState(hoyISO());
@@ -565,6 +481,10 @@ function DetalleMantenimiento({ item, tecnicos, onClose, onCambio, onVerHoja, on
         <div className={fila}>
           <dt className="text-slate-500">Prioridad</dt>
           <dd><PrioridadBadge prioridad={item.prioridad} /></dd>
+        </div>
+        <div className={fila}>
+          <dt className="text-slate-500">Naturaleza</dt>
+          <dd><NaturalezaBadge naturaleza={item.naturaleza} /></dd>
         </div>
         <div className={fila}>
           <dt className="text-slate-500">Estado</dt>

@@ -51,8 +51,17 @@ Diseño y reglas de negocio validados contra el prototipo Figma y el flujo BPMN 
     El texto es un **borrador pendiente de validación jurídica**.
   - La firma de conformidad la fija el servidor con el usuario autenticado.
   - Decisiones registradas en [`docs/adr/`](docs/adr/).
-- [ ] **Sprint 5 · Indicadores y Reportes (HU19, HU20, HU21, HU22, HU23)** *(Próximo)*
-  - Dashboard de disponibilidad de equipos biomédicos, costos y reportes ejecutivos.
+- [ ] **Sprint 5 · Indicadores y Reportes (HU19, HU20, HU21, HU22, HU23)** *(implementado, en revisión de cierre)*
+  - Costos de mantenimiento por trimestre y año, por tipo: interno o externo, preventivo o correctivo (HU19).
+  - Ranking de equipos por horas de intervención o por fallas frecuentes (HU20).
+  - Áreas más intervenidas, agrupando la zona sin distinguir tildes ni mayúsculas (HU21).
+  - Consumo de insumos, repuestos y mano de obra por técnico en horas-hombre (HU22).
+  - Historial de mantenimientos internos y externos con filtros y paginación (HU23).
+  - Cada reporte se exporta a CSV para Excel; solo el administrador accede a `/reportes`.
+  - Dashboard: indicadores del año para el administrador (cumplimiento del plan preventivo, costos,
+    órdenes abiertas, alertas) y el trabajo del día para el técnico.
+  - El alta manual del cronograma distingue mantenimiento preventivo y correctivo.
+  - Decisión registrada en [`docs/adr/0004`](docs/adr/0004-reportes-con-funciones-puras-y-lecturas-acotadas.md).
 
 ---
 
