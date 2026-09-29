@@ -8,6 +8,8 @@ const rateLimit = require('express-rate-limit');
 //   rechaza con 429 no se escribe.
 // - /uploads: cada lectura consulta la base de datos (sesión y dueño de la
 //   evidencia) y cada intento denegado deja una línea en la bitácora.
+// - Reportes (Sprint 5): cada consulta agrega hasta miles de filas y puede
+//   exportarse a CSV; un bucle de peticiones cargaría la base sin motivo.
 //
 // Los máximos son holgados a propósito: detrás de un proxy sin `trust proxy`
 // todos los usuarios de la planta comparten una IP.
@@ -16,6 +18,7 @@ const QUINCE_MINUTOS_MS = 15 * 60 * 1000;
 const CINCO_MINUTOS_MS = 5 * 60 * 1000;
 const ESCRITURAS_POR_VENTANA = 1000;
 const ARCHIVOS_POR_VENTANA = 2000;
+const REPORTES_POR_VENTANA = 120;
 const METODOS_DE_ESCRITURA = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 function crearLimitadorEscrituras({ ventanaMs = QUINCE_MINUTOS_MS, maximo = ESCRITURAS_POR_VENTANA } = {}) {
@@ -39,4 +42,21 @@ function crearLimitadorArchivos({ ventanaMs = CINCO_MINUTOS_MS, maximo = ARCHIVO
   });
 }
 
-module.exports = { crearLimitadorEscrituras, crearLimitadorArchivos, ESCRITURAS_POR_VENTANA, ARCHIVOS_POR_VENTANA };
+function crearLimitadorReportes({ ventanaMs = CINCO_MINUTOS_MS, maximo = REPORTES_POR_VENTANA } = {}) {
+  return rateLimit({
+    windowMs: ventanaMs,
+    limit: maximo,
+    message: { error: 'Demasiadas consultas de reportes en poco tiempo. Espera unos minutos e inténtalo de nuevo.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+}
+
+module.exports = {
+  crearLimitadorEscrituras,
+  crearLimitadorArchivos,
+  crearLimitadorReportes,
+  ESCRITURAS_POR_VENTANA,
+  ARCHIVOS_POR_VENTANA,
+  REPORTES_POR_VENTANA,
+};

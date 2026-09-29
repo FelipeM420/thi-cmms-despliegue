@@ -80,3 +80,20 @@ test('los valores por defecto son holgados: varios usuarios detrás de un mismo 
   assert.ok(ESCRITURAS_POR_VENTANA >= 500);
   assert.ok(ARCHIVOS_POR_VENTANA >= 1000);
 });
+
+test('los reportes tienen su propio límite de consultas (Sprint 5): pasado el máximo, 429 en español', async () => {
+  const { crearLimitadorReportes } = require('../src/middleware/limitadores');
+  await conApp(
+    (app) => {
+      app.use(crearLimitadorReportes({ maximo: 2 }));
+      app.get('/reporte', (req, res) => res.json({ ok: true }));
+    },
+    async (base) => {
+      const estados = [];
+      for (let i = 0; i < 3; i++) estados.push((await fetch(`${base}/reporte`)).status);
+      assert.deepEqual(estados, [200, 200, 429]);
+      const cuerpo = await (await fetch(`${base}/reporte`)).json();
+      assert.match(cuerpo.error, /reportes/i);
+    }
+  );
+});

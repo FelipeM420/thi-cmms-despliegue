@@ -8,5 +8,6 @@ Formato de Michael Nygard. Estado: `proposed` (redactada por el equipo, pendient
 | [0001](0001-servicio-externo-entidad-propia.md) | El mantenimiento externo es una entidad propia (`ServicioExterno`) | proposed | 2026-09-24 |
 | [0002](0002-ordenes-de-trabajo-automaticas.md) | Órdenes de trabajo generadas por el sistema, una por mantenimiento | proposed | 2026-09-24 |
 | [0003](0003-archivos-datos-personales-y-retencion.md) | Archivos, consentimiento y retención de datos personales (Ley 1581) | proposed | 2026-09-24 |
+| [0004](0004-reportes-con-funciones-puras-y-lecturas-acotadas.md) | Reportes calculados en funciones puras sobre lecturas acotadas | proposed | 2026-09-27 |
 
 Para una decisión nueva copia [template.md](template.md) con el siguiente número.

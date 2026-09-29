@@ -127,7 +127,7 @@ async function nuevoEquipo() {
   });
 }
 
-async function nuevoMantenimiento({ equipo, estado = 'PROGRAMADO', tecnico = null, fechaProgramada = null } = {}) {
+async function nuevoMantenimiento({ equipo, estado = 'PROGRAMADO', tecnico = null, fechaProgramada = null, naturaleza } = {}) {
   const eq = equipo ?? (await nuevoEquipo());
   return prisma.mantenimientoProgramado.create({
     data: {
@@ -137,6 +137,7 @@ async function nuevoMantenimiento({ equipo, estado = 'PROGRAMADO', tecnico = nul
       fechaProgramada: fechaProgramada ?? new Date(Date.UTC(2020, 5, 15)),
       estado,
       tecnicoAsignadoId: tecnico?.id ?? null,
+      ...(naturaleza ? { naturaleza } : {}),
     },
   });
 }
@@ -988,4 +989,57 @@ test('editar permite borrar un número de factura equivocado (vacío = sin factu
   const borrada = await api('PUT', `/api/servicios-externos/${servicio.id}`, admin, form);
   assert.equal(borrada.estado, 200);
   assert.equal(borrada.cuerpo.numeroFactura, null);
+});
+
+// ---------------------------------------------------------------------------
+// Sprint 5 — naturaleza del mantenimiento interno (HU19, HU20)
+// ---------------------------------------------------------------------------
+
+test('el administrador programa un correctivo interno; sin naturaleza, el mantenimiento es preventivo', { skip: omitir }, async () => {
+  const equipo = await nuevoEquipo();
+  const cuerpo = (extra) => ({ equipoId: equipo.id, tareaId: tarea.id, fechaProgramada: '2020-07-01', ...extra });
+
+  const correctivo = await api('POST', '/api/mantenimientos-programados', admin, cuerpo({ naturaleza: 'CORRECTIVO' }));
+  assert.equal(correctivo.estado, 201);
+  assert.equal(correctivo.cuerpo.naturaleza, 'CORRECTIVO');
+
+  const porDefecto = await api('POST', '/api/mantenimientos-programados', admin, cuerpo());
+  assert.equal(porDefecto.cuerpo.naturaleza, 'PREVENTIVO');
+
+  const invalida = await api('POST', '/api/mantenimientos-programados', admin, cuerpo({ naturaleza: 'URGENTE' }));
+  assert.equal(invalida.estado, 400);
+  assert.match(invalida.cuerpo.error, /naturaleza/i);
+});
+
+test('el cronograma filtra por naturaleza y valida el filtro', { skip: omitir }, async () => {
+  const equipo = await nuevoEquipo();
+  const correctivo = await nuevoMantenimiento({ equipo, naturaleza: 'CORRECTIVO' });
+  await nuevoMantenimiento({ equipo });
+
+  const soloCorrectivos = await api('GET', `/api/mantenimientos-programados?equipo=${equipo.id}&naturaleza=CORRECTIVO`, admin);
+  assert.deepEqual(soloCorrectivos.cuerpo.map((m) => m.id), [correctivo.id]);
+  assert.equal((await api('GET', '/api/mantenimientos-programados?naturaleza=OTRA', admin)).estado, 400);
+});
+
+test('reprogramar un correctivo no ejecutado conserva su naturaleza', { skip: omitir }, async () => {
+  const original = await nuevoMantenimiento({ estado: 'NO_EJECUTADO', naturaleza: 'CORRECTIVO' });
+  const nuevo = await api('POST', `/api/mantenimientos-programados/${original.id}/reprogramar`, admin, { fechaProgramada: '2020-08-01' });
+  assert.equal(nuevo.estado, 201);
+  assert.equal(nuevo.cuerpo.naturaleza, 'CORRECTIVO');
+});
+
+test('un correctivo del cronograma se terceriza con un servicio correctivo, y su naturaleza ya no se cambia', { skip: omitir }, async () => {
+  const equipo = await nuevoEquipo();
+  const correctivo = await nuevoMantenimiento({ equipo, naturaleza: 'CORRECTIVO' });
+
+  const preventivo = await api('POST', '/api/servicios-externos', admin, cuerpoServicio(equipo, { naturaleza: 'PREVENTIVO', mantenimientoProgramadoId: correctivo.id }));
+  assert.equal(preventivo.estado, 409);
+  assert.match(preventivo.cuerpo.error, /naturaleza/i);
+
+  const servicio = await api('POST', '/api/servicios-externos', admin, cuerpoServicio(equipo, { naturaleza: 'CORRECTIVO', mantenimientoProgramadoId: correctivo.id }));
+  assert.equal(servicio.estado, 201);
+  assert.equal((await mantenimientoActual(correctivo)).estado, 'COMPLETADO');
+
+  const cambio = await api('PUT', `/api/servicios-externos/${servicio.cuerpo.id}`, admin, { naturaleza: 'PREVENTIVO' });
+  assert.equal(cambio.estado, 409);
 });

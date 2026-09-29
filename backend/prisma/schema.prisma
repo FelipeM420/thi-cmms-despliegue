@@ -98,10 +98,12 @@ enum MotivoNoEjecucion {
   OTRO
 }
 
-// HU1 / HU19 — naturaleza del mantenimiento contratado a un tercero. Junto con
-// el origen (interno o externo) da el "tipo de mantenimiento" con el que se
-// filtra el reporte de costos: Interno/Externo x Preventivo/Correctivo.
-enum NaturalezaServicioExterno {
+// HU1 / HU19 / HU20 — naturaleza de un mantenimiento, interno (cronograma) o
+// contratado a un tercero (servicio externo). Junto con quién lo hace da el
+// "tipo de mantenimiento" del reporte de costos: Interno/Externo x
+// Preventivo/Correctivo. Antes de Sprint 5 se llamaba NaturalezaServicioExterno
+// (la migración lo renombra, no lo recrea: los datos se conservan).
+enum NaturalezaMantenimiento {
   PREVENTIVO
   CORRECTIVO
 }
@@ -319,6 +321,10 @@ model MantenimientoProgramado {
   origen          OrigenMantenimiento           @default(MANUAL)
   notas           String?
 
+  // HU19 / HU20 — lo que sale de un plan es preventivo; el administrador puede
+  // programar a mano un correctivo (una falla que hay que atender).
+  naturaleza NaturalezaMantenimiento @default(PREVENTIVO)
+
   // HU7 — nulos hasta que el administrador asigna un técnico.
   tecnicoAsignadoId String?
   tecnicoAsignado   Usuario? @relation("MantenimientoTecnicoAsignado", fields: [tecnicoAsignadoId], references: [id], onDelete: Restrict)
@@ -443,6 +449,8 @@ model InsumoUtilizado {
   creadoEn DateTime @default(now())
 
   @@index([registroEjecucionId])
+  // HU22 — el consumo de recursos se agrupa por insumo del inventario.
+  @@index([equipoInsumoId])
   @@map("insumos_utilizados")
 }
 
@@ -584,14 +592,14 @@ model ServicioExterno {
   equipoId String
   equipo   Equipo @relation(fields: [equipoId], references: [id], onDelete: Restrict)
 
-  // Opcional: el servicio cubre una ocurrencia del cronograma (preventivo
-  // tercerizado). A lo sumo un servicio por ocurrencia.
+  // Opcional: el servicio cubre una ocurrencia del cronograma (un mantenimiento
+  // que se tercerizó), con su misma naturaleza. A lo sumo un servicio por ocurrencia.
   mantenimientoProgramadoId String?                  @unique
   mantenimientoProgramado   MantenimientoProgramado? @relation(fields: [mantenimientoProgramadoId], references: [id], onDelete: Restrict)
 
   proveedor   String
   descripcion String
-  naturaleza  NaturalezaServicioExterno
+  naturaleza  NaturalezaMantenimiento
 
   // Se guarda a medianoche UTC, como el resto de fechas de calendario.
   fechaServicio  DateTime

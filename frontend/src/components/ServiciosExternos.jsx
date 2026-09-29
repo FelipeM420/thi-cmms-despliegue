@@ -1,13 +1,8 @@
 import { useState } from 'react';
 import { FileText, Pencil, Plus } from 'lucide-react';
 import ModalServicioExterno from './ModalServicioExterno';
+import NaturalezaBadge from './NaturalezaBadge';
 import { formatearFecha, formatearMoneda } from '../utils/mantenimiento';
-
-const ETIQUETA_NATURALEZA = { PREVENTIVO: 'Preventivo', CORRECTIVO: 'Correctivo' };
-const COLOR_NATURALEZA = {
-  PREVENTIVO: 'bg-emerald-50 text-emerald-700',
-  CORRECTIVO: 'bg-amber-50 text-amber-700',
-};
 
 // HU1 — servicios de mantenimiento contratados a proveedores, dentro de la
 // hoja de vida del equipo. Solo se monta para el administrador: el servidor
@@ -69,9 +64,7 @@ export default function ServiciosExternos({ equipo, onCambio }) {
                 <tr key={s.id} className="border-b border-slate-50 last:border-0 align-top">
                   <td className="py-2.5 whitespace-nowrap text-slate-700">{formatearFecha(s.fechaServicio)}</td>
                   <td className="py-2.5">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${COLOR_NATURALEZA[s.naturaleza]}`}>
-                      {ETIQUETA_NATURALEZA[s.naturaleza]}
-                    </span>
+                    <NaturalezaBadge naturaleza={s.naturaleza} />
                   </td>
                   <td className="py-2.5 text-slate-700">
                     {s.proveedor}

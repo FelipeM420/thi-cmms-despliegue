@@ -84,10 +84,11 @@ const UMBRALES_ALERTA = [
   { dias: 1, tipo: 'PREVENTIVA_1D' },
 ];
 
-// --- HU1 · Mantenimiento externo -------------------------------------------
+// --- HU1 / HU19 · Naturaleza del mantenimiento ------------------------------
 
-// Naturaleza del servicio contratado a un tercero (HU1, base del filtro de HU19).
-const NATURALEZAS_SERVICIO_EXTERNO = ['PREVENTIVO', 'CORRECTIVO'];
+// Naturaleza de un mantenimiento interno (cronograma) o de un servicio externo.
+// Con "interno / externo" forma el tipo de mantenimiento del reporte de costos.
+const NATURALEZAS_MANTENIMIENTO = ['PREVENTIVO', 'CORRECTIVO'];
 
 module.exports = {
   FRECUENCIAS,
@@ -105,5 +106,5 @@ module.exports = {
   TIPOS_ALERTA,
   ESTADOS_ALERTA,
   UMBRALES_ALERTA,
-  NATURALEZAS_SERVICIO_EXTERNO,
+  NATURALEZAS_MANTENIMIENTO,
 };

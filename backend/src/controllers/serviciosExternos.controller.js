@@ -12,7 +12,7 @@
 const { z } = require('zod');
 const prisma = require('../config/prisma');
 const { asyncHandler, errorHttp } = require('../middleware/manejoErrores');
-const { NATURALEZAS_SERVICIO_EXTERNO } = require('../utils/enums');
+const { NATURALEZAS_MANTENIMIENTO } = require('../utils/enums');
 const { textoOpc, fechaOpc, enumOpc, vacioAUndefined } = require('../utils/consultas');
 const { operacionesOrden } = require('../utils/ordenesTrabajo');
 const {
@@ -40,8 +40,8 @@ const textoRequerido = (etiqueta, maximo) =>
 const textoOpcional = (etiqueta, maximo) =>
   z.preprocess((v) => vacioAUndefined(recortar(v)), z.string().max(maximo, `${etiqueta} no puede superar ${maximo} caracteres.`).optional());
 
-const naturalezaSchema = z.enum(NATURALEZAS_SERVICIO_EXTERNO, {
-  errorMap: () => ({ message: `La naturaleza debe ser: ${NATURALEZAS_SERVICIO_EXTERNO.join(' o ')}.` }),
+const naturalezaSchema = z.enum(NATURALEZAS_MANTENIMIENTO, {
+  errorMap: () => ({ message: `La naturaleza debe ser: ${NATURALEZAS_MANTENIMIENTO.join(' o ')}.` }),
 });
 
 const fechaServicioSchema = z.coerce
@@ -86,7 +86,7 @@ const actualizarSchema = crearSchema
 const filtrosSchema = z.object({
   buscar: textoOpc,
   equipo: textoOpc,
-  naturaleza: enumOpc(NATURALEZAS_SERVICIO_EXTERNO, 'naturaleza'),
+  naturaleza: enumOpc(NATURALEZAS_MANTENIMIENTO, 'naturaleza'),
   desde: fechaOpc('desde'),
   hasta: fechaOpc('hasta'),
   limite: z.preprocess(
@@ -163,6 +163,7 @@ async function cargarMantenimientoCubierto(datos) {
     select: {
       equipoId: true,
       estado: true,
+      naturaleza: true,
       registroEjecucion: { select: { id: true } },
       servicioExterno: { select: { id: true } },
     },
@@ -235,13 +236,15 @@ const actualizar = asyncHandler(async (req, res) => {
 
   const actual = await prisma.servicioExterno.findUnique({
     where: { id: req.params.id },
-    select: { id: true, mantenimientoProgramadoId: true },
+    select: { id: true, mantenimientoProgramado: { select: { naturaleza: true } } },
   });
   if (!actual) throw errorHttp('Servicio externo no encontrado.', 404);
 
+  // Un servicio que cubre una ocurrencia del cronograma conserva su naturaleza (HU19).
   const datos = { ...parseo.data };
-  if (datos.naturaleza && actual.mantenimientoProgramadoId && datos.naturaleza !== 'PREVENTIVO') {
-    throw errorHttp('Un servicio que cubre una ocurrencia del cronograma es preventivo.', 409);
+  const naturalezaCubierta = actual.mantenimientoProgramado?.naturaleza;
+  if (datos.naturaleza && naturalezaCubierta && datos.naturaleza !== naturalezaCubierta) {
+    throw errorHttp(`Este servicio cubre un mantenimiento ${naturalezaCubierta} del cronograma: su naturaleza no se puede cambiar.`, 409);
   }
   const informe = urlDelInforme(req);
   if (informe) datos.informePdfUrl = informe;
