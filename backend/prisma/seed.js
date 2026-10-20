@@ -45,6 +45,7 @@ const CUENTAS = [
     nombre: 'Sebastián Felipe Moreno Martínez',
     email: 'sefemoreno123@umariana.edu.co',
     rol: 'ADMINISTRADOR',
+    esAdministradorPrincipal: true,
     clave: CLAVE_ADMIN,
   },
   // Cuentas ficticias para la demostración pública. No representan personas
@@ -106,6 +107,7 @@ async function main() {
       nombre: cuenta.nombre,
       passwordHash,
       rol: cuenta.rol,
+      esAdministradorPrincipal: Boolean(cuenta.esAdministradorPrincipal),
       activo: true,
     };
 

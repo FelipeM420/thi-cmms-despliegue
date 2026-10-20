@@ -1,6 +1,8 @@
 import { AlertTriangle } from 'lucide-react';
 import PrioridadBadge from '../../components/PrioridadBadge';
 import EstadoMantenimientoBadge from '../../components/EstadoMantenimientoBadge';
+import EnlaceArchivo from '../../components/EnlaceArchivo';
+import ImagenProtegida from '../../components/ImagenProtegida';
 import {
   ETIQUETA_MOTIVO,
   etiquetaUnidad,
@@ -187,13 +189,11 @@ function Evidencia({ titulo, url }) {
     <div>
       <p className="mb-1 text-xs text-slate-400">{titulo}</p>
       {url ? (
-        <a href={url} target="_blank" rel="noreferrer">
-          <img
-            src={url}
-            alt={`Evidencia ${titulo}`}
-            className="h-36 w-full rounded-lg border border-slate-200 object-cover"
-          />
-        </a>
+        <EnlaceArchivo url={url} className="block w-full" aria-label={`Abrir evidencia ${titulo} en otra pestaña`}>
+          <span className="flex h-36 w-full items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+            <ImagenProtegida src={url} alt={`Evidencia ${titulo}`} className="h-full w-full object-cover" />
+          </span>
+        </EnlaceArchivo>
       ) : (
         <div className="flex h-36 w-full items-center justify-center rounded-lg border border-dashed border-slate-200 text-xs text-slate-400">
           Sin evidencia

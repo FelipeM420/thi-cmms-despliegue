@@ -2,6 +2,9 @@ const { z } = require('zod');
 const prisma = require('../config/prisma');
 const { TIPOS_ACTIVO, ESTADOS_EQUIPO } = require('../utils/enums');
 const { textoOpc, enumOpc } = require('../utils/consultas');
+const { asyncHandler, errorHttp } = require('../middleware/manejoErrores');
+const { eliminarArchivoSubido } = require('../utils/archivosSubidos');
+const { esViolacionDeClaveForanea } = require('../utils/claveForanea');
 
 // Corresponde exactamente a los campos del formulario "Nuevo equipo" ya
 // validado en el prototipo Figma (pantalla 04 · Equipos · Nuevo).
@@ -184,13 +187,25 @@ async function actualizar(req, res) {
 
   try {
     const datosActualizados = { ...parseo.data };
-    if (req.files?.foto?.[0]) datosActualizados.fotoUrl = `/uploads/${req.files.foto[0].filename}`;
-    if (req.files?.manual?.[0]) datosActualizados.manualPdfUrl = `/uploads/${req.files.manual[0].filename}`;
+    const fotoNueva = req.files?.foto?.[0];
+    const manualNuevo = req.files?.manual?.[0];
+    if (fotoNueva) datosActualizados.fotoUrl = `/uploads/${fotoNueva.filename}`;
+    if (manualNuevo) datosActualizados.manualPdfUrl = `/uploads/${manualNuevo.filename}`;
+
+    // Si se reemplaza un archivo, el anterior se borra una vez guardado el cambio.
+    const anterior =
+      fotoNueva || manualNuevo
+        ? await prisma.equipo.findUnique({ where: { id: req.params.id }, select: { fotoUrl: true, manualPdfUrl: true } })
+        : null;
 
     const equipo = await prisma.equipo.update({
       where: { id: req.params.id },
       data: datosActualizados,
     });
+    if (anterior) {
+      if (fotoNueva) await eliminarArchivoSubido(anterior.fotoUrl);
+      if (manualNuevo) await eliminarArchivoSubido(anterior.manualPdfUrl);
+    }
     return res.json(equipo);
   } catch (error) {
     if (error.code === 'P2025') {
@@ -206,4 +221,47 @@ async function actualizar(req, res) {
   }
 }
 
-module.exports = { listar, obtener, crear, actualizar };
+// Mantenimientos que todavía no se tocaron: solo es calendario, no hay trabajo hecho.
+const ESTADOS_SIN_EJECUTAR = ['PROGRAMADO', 'ASIGNADO', 'CANCELADO'];
+
+// DELETE /api/equipos/:id — solo ADMINISTRADOR (aplicado en la ruta).
+//
+// Sirve para corregir un equipo registrado por error. Se elimina junto con su
+// programación sin ejecutar (planes, mantenimientos pendientes y sus alertas).
+// Si ya hay trabajo real registrado (una ejecución, un servicio externo, una orden
+// de trabajo —consecutivo institucional— o un consumo de insumo), la base lo
+// impide (todas las claves foráneas son RESTRICT), la transacción se revierte y se
+// responde 409: ahí lo correcto es marcarlo "Dado de baja", que conserva la
+// trazabilidad.
+const eliminar = asyncHandler(async (req, res) => {
+  const equipo = await prisma.equipo.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, fotoUrl: true, manualPdfUrl: true },
+  });
+  if (!equipo) throw errorHttp('Equipo no encontrado.', 404);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.alerta.deleteMany({ where: { equipoId: equipo.id } });
+      await tx.mantenimientoProgramado.deleteMany({ where: { equipoId: equipo.id, estado: { in: ESTADOS_SIN_EJECUTAR } } });
+      await tx.planMantenimiento.deleteMany({ where: { equipoId: equipo.id } });
+      await tx.equipo.delete({ where: { id: equipo.id } });
+    });
+  } catch (error) {
+    if (esViolacionDeClaveForanea(error)) {
+      throw errorHttp(
+        'No se puede eliminar este equipo porque ya tiene historial (mantenimientos ejecutados, órdenes de trabajo, servicios externos o consumos). ' +
+          'Márcalo como «Dado de baja» para conservar la trazabilidad.',
+        409,
+        'EQUIPO_CON_HISTORIAL'
+      );
+    }
+    throw error;
+  }
+
+  // La foto y el manual ya no los referencia nadie.
+  await Promise.all([eliminarArchivoSubido(equipo.fotoUrl), eliminarArchivoSubido(equipo.manualPdfUrl)]);
+  return res.status(204).end();
+});
+
+module.exports = { listar, obtener, crear, actualizar, eliminar };

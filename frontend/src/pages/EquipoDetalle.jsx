@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Pencil, FileText, Search, RotateCcw, X } from 'lucide-react';
+import { Pencil, FileText, Search, RotateCcw, Trash2, X } from 'lucide-react';
 import Layout from '../components/Layout';
 import EstadoBadge from '../components/EstadoBadge';
 import EstadoMantenimientoBadge from '../components/EstadoMantenimientoBadge';
 import ServiciosExternos from '../components/ServiciosExternos';
+import ModalEliminarEquipo from '../components/ModalEliminarEquipo';
+import ImagenProtegida from '../components/ImagenProtegida';
+import EnlaceArchivo from '../components/EnlaceArchivo';
 import { obtenerEquipo } from '../api/equipos';
 import { useAuth } from '../context/AuthContext';
 import { ESTADOS_MANTENIMIENTO, formatearFecha, formatearMoneda } from '../utils/mantenimiento';
@@ -23,6 +26,7 @@ export default function EquipoDetalle() {
   const { esAdministrador } = useAuth();
   const [equipo, setEquipo] = useState(null);
   const [error, setError] = useState('');
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
 
   const cargar = useCallback(
     () =>
@@ -74,12 +78,20 @@ export default function EquipoDetalle() {
           <EstadoBadge estado={equipo.estado} />
         </div>
         {esAdministrador && (
-          <button
-            onClick={() => navigate(`/equipos/${equipo.id}/editar`)}
-            className="flex items-center gap-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg px-4 py-2.5 hover:bg-slate-50"
-          >
-            <Pencil size={15} /> Editar equipo
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => navigate(`/equipos/${equipo.id}/editar`)}
+              className="flex items-center gap-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg px-4 py-2.5 hover:bg-slate-50"
+            >
+              <Pencil size={15} /> Editar equipo
+            </button>
+            <button
+              onClick={() => setConfirmandoEliminar(true)}
+              className="flex items-center gap-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg px-4 py-2.5 hover:bg-red-50"
+            >
+              <Trash2 size={15} /> Eliminar
+            </button>
+          </div>
         )}
       </div>
 
@@ -87,7 +99,7 @@ export default function EquipoDetalle() {
         <div className="w-[360px] shrink-0 bg-white border border-slate-200 rounded-xl p-6 flex flex-col gap-5">
           <div className="h-[180px] rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 text-sm overflow-hidden">
             {equipo.fotoUrl ? (
-              <img src={equipo.fotoUrl} alt={equipo.nombre} className="w-full h-full object-cover" />
+              <ImagenProtegida src={equipo.fotoUrl} alt={equipo.nombre} className="w-full h-full object-cover" />
             ) : (
               'Sin registro fotográfico'
             )}
@@ -102,9 +114,9 @@ export default function EquipoDetalle() {
             ))}
           </dl>
           {equipo.manualPdfUrl && (
-            <a href={equipo.manualPdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-blue-600 text-sm font-medium">
+            <EnlaceArchivo url={equipo.manualPdfUrl} className="flex items-center gap-2 text-left text-blue-600 text-sm font-medium">
               <FileText size={15} /> Ver manual del equipo (PDF)
-            </a>
+            </EnlaceArchivo>
           )}
         </div>
 
@@ -113,6 +125,18 @@ export default function EquipoDetalle() {
           {esAdministrador && <ServiciosExternos equipo={equipo} onCambio={cargar} />}
         </div>
       </div>
+
+      {confirmandoEliminar && (
+        <ModalEliminarEquipo
+          equipo={equipo}
+          onClose={() => setConfirmandoEliminar(false)}
+          onEliminado={() => navigate('/equipos')}
+          onDadoDeBaja={() => {
+            setConfirmandoEliminar(false);
+            cargar();
+          }}
+        />
+      )}
     </Layout>
   );
 }

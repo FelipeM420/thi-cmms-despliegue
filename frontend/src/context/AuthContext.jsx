@@ -20,14 +20,21 @@ export function AuthProvider({ children }) {
     return datosUsuario;
   }, []);
 
-  // Las fotos, manuales y evidencias se sirven con una cookie HttpOnly que el
-  // servidor emite al iniciar sesión. Al abrir la app con una sesión ya
-  // guardada se renueva (cubre sesiones anteriores a esa cookie o cookies
-  // borradas). Un 401 lo maneja el interceptor de axios; cualquier otro fallo
-  // solo deja las imágenes sin cargar hasta el siguiente intento, no cierra la sesión.
+  // Al abrir la app con una sesión ya guardada se consulta el perfil: renueva la
+  // cookie HttpOnly de archivos (cubre sesiones anteriores a esa cookie o cookies
+  // borradas) y sincroniza lo que cambió desde el último inicio de sesión (rol,
+  // administrador principal, nombre), porque otro administrador pudo editar la cuenta.
+  // Un 401 lo maneja el interceptor de axios; cualquier otro fallo no cierra la sesión.
   useEffect(() => {
     if (!localStorage.getItem('thi_token')) return;
-    obtenerPerfil().catch(() => {});
+    obtenerPerfil()
+      .then(({ id, nombre, email, rol, esAdministradorPrincipal }) => {
+        if (!localStorage.getItem('thi_token')) return; // cerró sesión mientras tanto
+        const actualizado = { id, nombre, email, rol, esAdministradorPrincipal };
+        localStorage.setItem('thi_usuario', JSON.stringify(actualizado));
+        setUsuario(actualizado);
+      })
+      .catch(() => {});
   }, []);
 
   const logout = useCallback(() => {

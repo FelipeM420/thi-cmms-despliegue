@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, RotateCcw } from 'lucide-react';
+import { Search, Plus, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import EstadoBadge from '../components/EstadoBadge';
+import ModalEliminarEquipo from '../components/ModalEliminarEquipo';
 import { listarEquipos } from '../api/equipos';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,6 +17,7 @@ export default function EquiposListado() {
   // Catálogo completo (sin filtrar) para los desplegables y el contador.
   const [zonas, setZonas] = useState([]);
   const [totalEquipos, setTotalEquipos] = useState(0);
+  const [aEliminar, setAEliminar] = useState(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -38,14 +40,27 @@ export default function EquiposListado() {
   // Las zonas se cargan sin filtros: si se derivaran de `equipos` (que ya
   // viene filtrado del backend), al elegir una zona el desplegable
   // colapsaría a esa única opción y no se podría saltar a otra.
+  const cargarCatalogo = useCallback(
+    () =>
+      listarEquipos()
+        .then((todos) => {
+          setZonas([...new Set(todos.map((e) => e.zona))].sort());
+          setTotalEquipos(todos.length);
+        })
+        .catch(() => {}),
+    []
+  );
+
   useEffect(() => {
-    listarEquipos()
-      .then((todos) => {
-        setZonas([...new Set(todos.map((e) => e.zona))].sort());
-        setTotalEquipos(todos.length);
-      })
-      .catch(() => {});
-  }, []);
+    cargarCatalogo();
+  }, [cargarCatalogo]);
+
+  // Tras eliminar o dar de baja un equipo se refresca el listado y el catálogo de zonas.
+  const recargarTodo = () => {
+    setAEliminar(null);
+    cargar();
+    cargarCatalogo();
+  };
 
   // Búsqueda por texto con debounce simple para no disparar una petición
   // por cada tecla — HU3 exige poder filtrar, no exige que sea instantáneo.
@@ -149,6 +164,7 @@ export default function EquiposListado() {
                 <th className="font-medium px-5 py-3">ZONA</th>
                 <th className="font-medium px-5 py-3">TIPO</th>
                 <th className="font-medium px-5 py-3">ESTADO</th>
+                {esAdministrador && <th className="font-medium px-5 py-3 text-right">ACCIONES</th>}
               </tr>
             </thead>
             <tbody>
@@ -164,12 +180,44 @@ export default function EquiposListado() {
                   <td className="px-5 py-3.5 text-slate-600">{eq.zona}</td>
                   <td className="px-5 py-3.5 text-slate-600">{eq.tipoActivo}</td>
                   <td className="px-5 py-3.5"><EstadoBadge estado={eq.estado} /></td>
+                  {esAdministrador && (
+                    <td className="px-5 py-3.5">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/equipos/${eq.id}/editar`);
+                          }}
+                          className="rounded-md p-1.5 text-blue-600 hover:bg-blue-50"
+                          aria-label={`Editar ${eq.nombre}`}
+                          title="Editar"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAEliminar(eq);
+                          }}
+                          className="rounded-md p-1.5 text-red-600 hover:bg-red-50"
+                          aria-label={`Eliminar ${eq.nombre}`}
+                          title="Eliminar"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {aEliminar && (
+        <ModalEliminarEquipo equipo={aEliminar} onClose={() => setAEliminar(null)} onEliminado={recargarTodo} onDadoDeBaja={recargarTodo} />
+      )}
     </Layout>
   );
 }

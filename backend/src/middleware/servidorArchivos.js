@@ -9,7 +9,7 @@ const { NOMBRE_COOKIE, leerCookie } = require('../utils/cookieArchivos');
 // (o adivinara) una URL descargaba el archivo sin autenticarse.
 //
 // Reglas:
-//   - Sin cookie válida -> 401.
+//   - Sin JWT válido (Bearer o cookie) -> 401.
 //   - Solo nombres con el formato que genera el servidor (ver subidaArchivos):
 //     nada de rutas, extensiones libres ni archivos ocultos -> 404.
 //   - foto y manual (catálogo de equipos): cualquier usuario activo.
@@ -28,6 +28,18 @@ const { NOMBRE_COOKIE, leerCookie } = require('../utils/cookieArchivos');
 const FORMATO_NOMBRE = /^(foto|manual|evidenciaAntes|evidenciaDespues|informe)-[A-Za-z0-9-]{1,80}\.(png|jpe?g|pdf)$/i;
 
 const respuestaNoEncontrado = () => errorHttp('Archivo no encontrado.', 404);
+
+// El JWT llega por una de dos vías:
+//   - Authorization: Bearer (la usa el frontend: descarga el archivo con fetch y lo
+//     muestra como blob). Es la que funciona entre Vercel y Render, que son sitios
+//     distintos y no comparten la cookie SameSite.
+//   - Cookie HttpOnly `thi_archivos` (despliegue en un solo origen).
+// Si viene un Bearer, manda él: uno inválido no se rescata con una cookie válida.
+function leerToken(req) {
+  const encabezado = req.headers.authorization;
+  if (typeof encabezado === 'string' && encabezado.startsWith('Bearer ')) return encabezado.slice(7);
+  return leerCookie(req.headers.cookie, NOMBRE_COOKIE);
+}
 
 const prefijoDe = (nombre) => nombre.slice(0, nombre.indexOf('-')).toLowerCase();
 
@@ -71,15 +83,17 @@ async function tieneAcceso(prisma, usuario, nombre, prefijo) {
  * @param {string} opciones.secreto llave con la que se firman los JWT
  * @param {Function} [opciones.registrarLectura] recibe { usuarioId, usuarioNombre, archivo, estado, denegado }
  *   por cada acceso a un archivo sensible: lectura completada o intento denegado
+ * @param {{ leer: (nombre: string) => Promise<{ tipo: string, datos: Uint8Array }|null> }} [opciones.respaldo]
+ *   copia de los archivos en la base de datos (utils/respaldoArchivos.js): se usa si el archivo falta en disco
  */
-function crearServidorArchivos({ prisma, directorio, secreto, registrarLectura = () => {} }) {
+function crearServidorArchivos({ prisma, directorio, secreto, registrarLectura = () => {}, respaldo = null }) {
   return asyncHandler(async (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.set('Allow', 'GET, HEAD');
       throw errorHttp('Método no permitido.', 405);
     }
 
-    const token = leerCookie(req.headers.cookie, NOMBRE_COOKIE);
+    const token = leerToken(req);
     let payload;
     try {
       payload = jwt.verify(token ?? '', secreto, { algorithms: ['HS256'] });
@@ -107,6 +121,17 @@ function crearServidorArchivos({ prisma, directorio, secreto, registrarLectura =
       throw respuestaNoEncontrado();
     }
 
+    // Lo que falta en disco (el hosting lo borró al reiniciar) se recupera del respaldo
+    // en la base. Ya pasó la autorización: el respaldo no abre ningún acceso nuevo.
+    const servirDesdeRespaldo = async () => {
+      const archivo = await respaldo.leer(nombre);
+      if (!archivo) throw respuestaNoEncontrado();
+      // El nombre lleva un UUID y su contenido no cambia: sirve de ETag para revalidar (304).
+      res.set({ ...cabecerasDe(nombre, sensible), 'Content-Type': archivo.tipo, ETag: `"${nombre}"` });
+      res.send(Buffer.from(archivo.datos));
+      if (sensible) registrarLectura({ ...registro, estado: res.statusCode, denegado: false });
+    };
+
     const opcionesEnvio = { root: directorio, dotfiles: 'deny', cacheControl: false, headers: cabecerasDe(nombre, sensible) };
     res.sendFile(nombre, opcionesEnvio, (error) => {
       if (!error) {
@@ -116,7 +141,12 @@ function crearServidorArchivos({ prisma, directorio, secreto, registrarLectura =
         return;
       }
       if (res.headersSent || error.code === 'ECONNABORTED') return;
-      next(error.code === 'ENOENT' || error.status === 404 ? respuestaNoEncontrado() : error);
+      const faltaEnDisco = error.code === 'ENOENT' || error.status === 404;
+      if (faltaEnDisco && respaldo) {
+        servirDesdeRespaldo().catch(next);
+        return;
+      }
+      next(faltaEnDisco ? respuestaNoEncontrado() : error);
     });
   });
 }

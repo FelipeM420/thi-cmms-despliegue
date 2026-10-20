@@ -19,6 +19,24 @@ let directorio;
 let servidor;
 let base;
 
+// Doble del respaldo en la base: guarda en memoria lo que recibe.
+const enRespaldo = new Map(); // nombre -> Buffer
+const respaldoFalso = {
+  guardar: async (archivo) => {
+    enRespaldo.set(archivo.filename, fs.readFileSync(archivo.path));
+  },
+  eliminar: async (nombre) => {
+    enRespaldo.delete(nombre);
+  },
+};
+// Respaldo cuya base está caída.
+const respaldoRoto = {
+  guardar: async () => {
+    throw new Error('base caída');
+  },
+  eliminar: async () => {},
+};
+
 test.before(async () => {
   test.mock.method(console, 'error', () => {});
   directorio = fs.mkdtempSync(path.join(os.tmpdir(), 'thi-subidas-'));
@@ -44,6 +62,17 @@ test.before(async () => {
     ...crearSubida({ foto: { tipo: 'imagen', etiqueta: 'El registro fotográfico' } }, { directorio }),
     (req, res) => res.status(Number(req.params.estado)).json({})
   );
+  // Con respaldo en la base: el archivo se copia ahí además del disco (Render gratis borra el disco).
+  app.post(
+    '/subir-con-respaldo/:estado',
+    ...crearSubida({ foto: { tipo: 'imagen', etiqueta: 'El registro fotográfico' } }, { directorio, respaldo: respaldoFalso }),
+    (req, res) => res.status(Number(req.params.estado)).json({ nombre: req.files?.foto?.[0]?.filename ?? null })
+  );
+  app.post(
+    '/subir-con-respaldo-roto',
+    ...crearSubida({ foto: { tipo: 'imagen', etiqueta: 'El registro fotográfico' } }, { directorio, respaldo: respaldoRoto }),
+    (req, res) => res.json({})
+  );
   app.use(manejadorErrores);
   servidor = await new Promise((resolver) => {
     const s = app.listen(0, '127.0.0.1', () => resolver(s));
@@ -58,6 +87,7 @@ test.after(() => {
 
 test.beforeEach(() => {
   for (const nombre of fs.readdirSync(directorio)) fs.rmSync(path.join(directorio, nombre), { force: true });
+  enRespaldo.clear();
 });
 
 function formulario(partes) {
@@ -197,4 +227,58 @@ test('un campo de texto de cientos de KB se rechaza con 400 (tamaño de campo)',
   const respuesta = await fetch(`${base}/subir`, { method: 'POST', body: form });
   assert.equal(respuesta.status, 400);
   assert.match((await respuesta.json()).error, /demasiado extens/i);
+});
+
+// ---------------------------------------------------------------------------
+// Respaldo en la base de datos
+// ---------------------------------------------------------------------------
+
+async function subirConRespaldo(ruta, partes) {
+  const respuesta = await fetch(`${base}${ruta}`, { method: 'POST', body: formulario(partes) });
+  // Los 4xx/5xx del doble de controlador responden JSON; las esperas dejan correr el hook de 'finish'.
+  const cuerpo = await respuesta.json();
+  await new Promise((resolver) => setTimeout(resolver, 30));
+  return { estado: respuesta.status, cuerpo };
+}
+const fotoPng = [{ campo: 'foto', contenido: PNG, tipo: 'image/png', nombre: 'foto.png' }];
+
+test('con respaldo: un archivo aceptado queda en disco y copiado en la base, byte por byte', async () => {
+  const { estado, cuerpo } = await subirConRespaldo('/subir-con-respaldo/200', fotoPng);
+  assert.equal(estado, 200);
+  assert.deepEqual(archivosEnDisco(), [cuerpo.nombre]);
+  assert.deepEqual([...enRespaldo.keys()], [cuerpo.nombre]);
+  assert.deepEqual(enRespaldo.get(cuerpo.nombre), PNG);
+});
+
+test('con respaldo: si el controlador rechaza (4xx), tampoco queda huérfano en la base', async () => {
+  const { estado } = await subirConRespaldo('/subir-con-respaldo/409', fotoPng);
+  assert.equal(estado, 409);
+  assert.deepEqual(archivosEnDisco(), []);
+  assert.equal(enRespaldo.size, 0);
+});
+
+test('con respaldo: ante un fallo interno (5xx) se conservan ambos, como el archivo en disco', async () => {
+  const { estado, cuerpo } = await subirConRespaldo('/subir-con-respaldo/500', fotoPng);
+  assert.equal(estado, 500);
+  assert.deepEqual(archivosEnDisco(), [cuerpo.nombre]);
+  assert.deepEqual([...enRespaldo.keys()], [cuerpo.nombre]);
+});
+
+test('con respaldo: un archivo falso se rechaza antes y no llega a la base', async () => {
+  const { estado } = await subirConRespaldo('/subir-con-respaldo/200', [{ campo: 'foto', contenido: HTML, tipo: 'image/png', nombre: 'x.png' }]);
+  assert.equal(estado, 400);
+  assert.deepEqual(archivosEnDisco(), []);
+  assert.equal(enRespaldo.size, 0);
+});
+
+test('con respaldo: una solicitud sin archivos pasa sin tocar la base', async () => {
+  const { estado } = await subirConRespaldo('/subir-con-respaldo/200', []);
+  assert.equal(estado, 200);
+  assert.equal(enRespaldo.size, 0);
+});
+
+test('con respaldo: si la base falla se responde 500 y no queda el archivo en disco', async () => {
+  const { estado } = await subirConRespaldo('/subir-con-respaldo-roto', fotoPng);
+  assert.equal(estado, 500);
+  assert.deepEqual(archivosEnDisco(), []);
 });

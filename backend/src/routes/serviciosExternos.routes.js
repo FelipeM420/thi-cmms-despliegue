@@ -2,6 +2,7 @@ const express = require('express');
 const { listar, obtener, crear, actualizar } = require('../controllers/serviciosExternos.controller');
 const { verificarToken, requiereRol } = require('../middleware/auth');
 const { crearSubida } = require('../middleware/subidaArchivos');
+const { respaldoEnBase } = require('../utils/respaldoArchivos');
 
 const router = express.Router();
 
@@ -11,7 +12,7 @@ const router = express.Router();
 router.use(verificarToken, requiereRol('ADMINISTRADOR'));
 
 // Informe del proveedor (manual, garantía o certificado), solo PDF.
-const subirInforme = crearSubida({ informe: { tipo: 'pdf', etiqueta: 'El informe del servicio' } });
+const subirInforme = crearSubida({ informe: { tipo: 'pdf', etiqueta: 'El informe del servicio' } }, { respaldo: respaldoEnBase });
 
 router.get('/', listar);
 router.get('/:id', obtener);

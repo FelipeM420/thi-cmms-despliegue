@@ -19,6 +19,7 @@ const reportesRoutes = require('./routes/reportes.routes');
 const { registrarAuditoria, registrarAccesoArchivo, registrarEventoSistema } = require('./middleware/auditoria');
 const { manejadorErrores } = require('./middleware/manejoErrores');
 const { crearServidorArchivos } = require('./middleware/servidorArchivos');
+const { respaldoEnBase } = require('./utils/respaldoArchivos');
 const { crearLimitadorEscrituras, crearLimitadorArchivos } = require('./middleware/limitadores');
 const { directorioUploads } = require('./config/uploads');
 const prisma = require('./config/prisma');
@@ -79,8 +80,9 @@ const limitadorLogin = rateLimit({
   legacyHeaders: false,
 });
 
-// Fotos, manuales y evidencias subidos (almacenamiento local). Solo con sesión:
-// ver middleware/servidorArchivos.js (cookie HttpOnly emitida al iniciar sesión).
+// Fotos, manuales y evidencias subidos (disco local, con copia en la base: el disco del
+// hosting gratuito se vacía al reiniciar). Solo con sesión: ver middleware/servidorArchivos.js
+// (Bearer de la API o cookie HttpOnly emitida al iniciar sesión).
 app.use(
   '/uploads',
   crearLimitadorArchivos(),
@@ -89,6 +91,7 @@ app.use(
     directorio: directorioUploads(),
     secreto: process.env.JWT_SECRET,
     registrarLectura: registrarAccesoArchivo,
+    respaldo: respaldoEnBase,
   })
 );
 

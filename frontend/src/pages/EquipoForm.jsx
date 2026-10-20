@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Upload } from 'lucide-react';
 import Layout from '../components/Layout';
+import ImagenProtegida from '../components/ImagenProtegida';
+import EnlaceArchivo from '../components/EnlaceArchivo';
 import { obtenerEquipo, crearEquipo, actualizarEquipo, construirFormDataEquipo } from '../api/equipos';
 
 const VACIO = {
@@ -18,6 +20,8 @@ export default function EquipoForm() {
   const [campos, setCampos] = useState(VACIO);
   const [foto, setFoto] = useState(null);
   const [manual, setManual] = useState(null);
+  // Archivos ya guardados del equipo (solo en edición): se muestran y se reemplazan al subir otro.
+  const [actuales, setActuales] = useState({ fotoUrl: null, manualPdfUrl: null });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [cargando, setCargando] = useState(esEdicion);
@@ -25,14 +29,15 @@ export default function EquipoForm() {
   useEffect(() => {
     if (!esEdicion) return;
     obtenerEquipo(id)
-      .then((eq) =>
+      .then((eq) => {
+        setActuales({ fotoUrl: eq.fotoUrl, manualPdfUrl: eq.manualPdfUrl });
         setCampos({
           nombre: eq.nombre, referencia: eq.referencia, numeroSerie: eq.numeroSerie || '',
           marca: eq.marca || '', anioAdquisicion: eq.anioAdquisicion || '', zona: eq.zona,
           tipoActivo: eq.tipoActivo, costo: eq.costo || '', descripcionTecnica: eq.descripcionTecnica || '',
           tipoMantenimiento: eq.tipoMantenimiento, estado: eq.estado,
-        })
-      )
+        });
+      })
       .catch(() => setError('No se pudo cargar el equipo.'))
       .finally(() => setCargando(false));
   }, [id, esEdicion]);
@@ -156,17 +161,27 @@ export default function EquipoForm() {
         <div className="grid grid-cols-2 gap-5">
           <div>
             <label className={labelClase}>Registro fotográfico</label>
+            {esEdicion && actuales.fotoUrl && !foto && (
+              <div className="mb-2 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+                <ImagenProtegida src={actuales.fotoUrl} alt={`Foto actual de ${campos.nombre}`} className="h-full w-full object-cover" />
+              </div>
+            )}
             <label className="flex flex-col items-center justify-center gap-1.5 border border-dashed border-slate-300 rounded-lg py-8 cursor-pointer hover:border-blue-400 text-slate-400 text-xs">
               <Upload size={18} />
-              {foto ? foto.name : 'PNG o JPG — clic para subir'}
+              {foto ? foto.name : actuales.fotoUrl ? 'Reemplazar foto — PNG o JPG' : 'PNG o JPG — clic para subir'}
               <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => setFoto(e.target.files[0])} />
             </label>
           </div>
           <div>
             <label className={labelClase}>Manual del equipo (PDF)</label>
+            {esEdicion && actuales.manualPdfUrl && !manual && (
+              <EnlaceArchivo url={actuales.manualPdfUrl} className="mb-2 block text-left text-xs font-medium text-blue-600">
+                Ver manual actual (PDF)
+              </EnlaceArchivo>
+            )}
             <label className="flex flex-col items-center justify-center gap-1.5 border border-dashed border-slate-300 rounded-lg py-8 cursor-pointer hover:border-blue-400 text-slate-400 text-xs">
               <Upload size={18} />
-              {manual ? manual.name : 'PDF — clic para subir'}
+              {manual ? manual.name : actuales.manualPdfUrl ? 'Reemplazar manual — PDF' : 'PDF — clic para subir'}
               <input type="file" accept="application/pdf" className="hidden" onChange={(e) => setManual(e.target.files[0])} />
             </label>
           </div>

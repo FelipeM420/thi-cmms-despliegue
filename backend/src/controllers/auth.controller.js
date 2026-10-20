@@ -20,7 +20,8 @@ function emitirCookieArchivos(res, token, exp) {
 }
 
 const loginSchema = z.object({
-  email: z.string().email('Correo inválido.'),
+  // Las cuentas se guardan con el correo en minúsculas (controllers/usuarios.controller.js).
+  email: z.string().trim().toLowerCase().email('Correo inválido.'),
   password: z.string().min(1, 'La contraseña es obligatoria.'),
 });
 
@@ -46,6 +47,8 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Credenciales inválidas.' });
     }
 
+    // El token solo identifica a la persona; el rol y la condición de principal se leen
+    // de la base en cada petición (middleware/auth.js).
     const token = jwt.sign(
       { sub: usuario.id, nombre: usuario.nombre, rol: usuario.rol },
       process.env.JWT_SECRET,
@@ -56,7 +59,7 @@ async function login(req, res) {
 
     return res.json({
       token,
-      usuario: { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol },
+      usuario: { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol, esAdministradorPrincipal: usuario.esAdministradorPrincipal },
     });
   } catch (error) {
     console.error('Error en login:', error);
@@ -69,7 +72,7 @@ async function me(req, res) {
   try {
     const usuario = await prisma.usuario.findUnique({
       where: { id: req.usuario.sub },
-      select: { id: true, nombre: true, email: true, rol: true, activo: true },
+      select: { id: true, nombre: true, email: true, rol: true, esAdministradorPrincipal: true, activo: true },
     });
     if (!usuario || !usuario.activo) {
       return res.status(401).json({ error: 'Sesión no válida.' });

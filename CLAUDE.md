@@ -61,7 +61,7 @@ Los dos autores son **administradores**; los tres técnicos son perfiles fictici
 | Rol | Nombre | Email | Password |
 |---|---|---|---|
 | ADMINISTRADOR | Andrés Felipe Lombana Melo | anfelombana123@umariana.edu.co | THIadmin2026* |
-| ADMINISTRADOR | Sebastián Felipe Moreno Martínez | sefemoreno123@umariana.edu.co | THIadmin2026* |
+| ADMINISTRADOR **principal** | Sebastián Felipe Moreno Martínez | sefemoreno123@umariana.edu.co | THIadmin2026* |
 | TECNICO | Carlos Alberto Mendoza *(Principal Biomédico)* | carlos.mendoza@thi.com.co | THItecnico2026* |
 | TECNICO | Juan Pablo Pérez *(Mecánico y Climatización)* | juan.perez@thi.com.co | THItecnico2026* |
 | TECNICO | John Doe Morales *(Planta y Servicios Generales)* | john.doe@thi.com.co | THItecnico2026* |
@@ -72,13 +72,16 @@ La especialidad de cada técnico es documental: `Usuario` no tiene campo `cargo`
 
 Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/*.controller.js` → `src/config/prisma.js` (singleton `PrismaClient`).
 
-- **Auth & Access Control** — `src/middleware/auth.js` exports `verificarToken` (validates JWT HS256, sets `req.usuario = { sub, nombre, rol, iat, exp }` y `req.token`) and `requiereRol('ADMINISTRADOR', ...)`.
+- **Auth & Access Control** — `src/middleware/auth.js` exports `verificarToken` (validates JWT HS256 y **consulta la cuenta en la base en cada petición**: si no existe o está desactivada → 401; `req.usuario = { sub, nombre, rol, esAdministradorPrincipal, iat, exp }` con rol y principal leídos de la base, no del token, así que desactivar o cambiar de rol surte efecto al instante), `crearVerificarToken` (versión inyectable para pruebas) and `requiereRol('ADMINISTRADOR', ...)`.
+- **Gestión de cuentas (HU24)** — `src/controllers/usuarios.controller.js` + `src/utils/permisosCuentas.js` (reglas puras). **Administrador principal** (`Usuario.esAdministradorPrincipal`, lo fija solo la migración y la semilla; ninguna petición lo acepta): crea, edita, desactiva y elimina administradores y técnicos. **Administrador común**: solo técnicos; no toca a otros administradores ni al principal ni puede ascender a nadie. Nadie cambia su propio rol ni se desactiva/elimina (así el principal no se bloquea), y la cuenta del principal solo la modifica su titular. `GET /api/usuarios` devuelve `permisos` por cuenta (la interfaz solo ofrece lo permitido; el servidor vuelve a validar). `DELETE` borra la cuenta; si tiene actividad (FK RESTRICT) la deja **desactivada** y responde `{ eliminada: false }`. El correo se guarda y se busca en minúsculas.
 - **Validation** — every write body is parsed with a **Zod** schema in the controller; `.safeParse` failures return `400` with `error.issues[0].message`.
 - **File uploads (HU1, HU9, servicios externos)** — `src/middleware/subidaArchivos.js` (`crearSubida(campos)`): `multer` 2.x con límites (10 MB, 20 campos, 100 KB por campo de texto),
   nombres UUID, lista cerrada de tipos por **bytes mágicos** (`src/utils/tiposArchivo.js`: PNG, JPEG y PDF; el `mimetype` del cliente no cuenta) y limpieza del archivo si la petición se rechaza.
+  **Respaldo en la base:** el disco de Render (plan gratuito) se vacía al reiniciar/redesplegar, así que `crearSubida(campos, { respaldo: respaldoEnBase })` copia además cada archivo aceptado a la tabla `archivos_subidos`
+  (`src/utils/respaldoArchivos.js`; mismo criterio 4xx/5xx que el disco). Las tres rutas con subida (equipos, ejecuciones, servicios externos) lo usan. Pensado para el prototipo (≤ 10 MB por archivo, base gratuita ≈ 500 MB); en producción real, almacenamiento de objetos.
   En la ejecución se autoriza (`autorizarEjecucion.js`) **antes** de leer la subida. Carpeta única `UPLOADS_DIR` (`src/config/uploads.js`, por defecto `src/uploads`).
-- **Servicio de archivos (`/uploads`)** — `src/middleware/servidorArchivos.js`. Ya no es estático público: exige la cookie HttpOnly `thi_archivos` (JWT) que emite `POST /api/auth/login` y `GET /api/auth/me`
-  (`src/utils/cookieArchivos.js`; `POST /api/auth/logout` la borra). 401 sin cookie; 404 uniforme para lo inexistente y lo no autorizado; autorización por prefijo del archivo
+- **Servicio de archivos (`/uploads`)** — `src/middleware/servidorArchivos.js`. Ya no es estático público: exige el JWT, por `Authorization: Bearer` (lo que usa el frontend: descarga con `fetch` y muestra un blob; es lo que funciona entre Vercel y Render) o por la cookie HttpOnly `thi_archivos` que emite `POST /api/auth/login` y `GET /api/auth/me`
+  (`src/utils/cookieArchivos.js`; `POST /api/auth/logout` la borra). Si falta en disco, lo sirve desde `archivos_subidos`. **No usar `<img src>`/`<a href>` a `/uploads` desde otro origen:** `helmet` responde `Cross-Origin-Resource-Policy: same-origin` y la cookie SameSite no viaja. 401 sin JWT; 404 uniforme para lo inexistente y lo no autorizado; autorización por prefijo del archivo
   (`foto`/`manual`: cualquier sesión; `evidenciaAntes`/`evidenciaDespues`: el técnico de esa ejecución o el admin; `informe`: solo admin); `no-store` en lo sensible; cada acceso a evidencia queda en la bitácora.
 - **Audit log (Ley 1581)** — `src/middleware/auditoria.js` is global; on every `POST/PUT/PATCH/DELETE` it appends a JSON line to `src/logs/auditoria.log` on response `finish`. Keep working when adding write endpoints.
 - **Security posture (ISO 25010)** — `helmet`, `express-rate-limit` (10 login attempts / 15 min / IP on `/api/auth/login`; además `src/middleware/limitadores.js`: 1000 escrituras / 15 min / IP
@@ -111,10 +114,12 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
   `utils/dinero.js` (suma en centavos enteros), `utils/normalizacion.js` (agrupa `zona` y descripciones sin tildes, mayúsculas ni espacios; muestra la escritura más usada)
   y `utils/csv.js` + `utils/reportesCsv.js` (BOM, `;`, coma decimal, celdas que empiezan por `= + - @` neutralizadas). Ver `docs/adr/0004`.
   **Fecha de referencia:** la de ejecución (`fechaEjecucion`, día de Colombia) para lo interno; `fechaServicio` para lo externo. Solo cuentan ejecuciones **finalizadas** (costo congelado).
+- **Eliminar equipos** — `DELETE /api/equipos/:id` (solo administrador, `equipos.controller.js`): transacción que borra alertas, mantenimientos PROGRAMADO/ASIGNADO/CANCELADO y planes del equipo y luego el equipo, más su foto y manual (disco y base). Si ya hay trabajo real (ejecución, servicio externo, OT —consecutivo institucional—, consumo de insumo) la FK RESTRICT lo impide, la transacción se revierte y responde 409 `EQUIPO_CON_HISTORIAL`: ahí se usa «Dado de baja». **Prisma NO traduce el `RESTRICT` de Postgres (SQLSTATE 23001) a `P2003`**: usar `utils/claveForanea.js` (`esViolacionDeClaveForanea`) para detectarlo.
 - **Query validation** — `src/utils/consultas.js` valida los filtros de query con Zod (`enumOpc`, `fechaOpc`, `textoOpc`, `booleanoOpc`): un valor inválido responde 400, no un 500 opaco desde Prisma.
 
 ### Data model (`prisma/schema.prisma`)
-- **Sprint 1**: `Usuario`, `Equipo`.
+- **Sprint 1**: `Usuario` (`esAdministradorPrincipal`, migración `administrador_principal`: marca a Sebastián Moreno por correo), `Equipo`.
+- **Despliegue** (migración `archivos_subidos`): `ArchivoSubido` (`nombre` PK, `tipo`, `tamano`, `datos` BYTEA), copia de los archivos subidos; sin claves foráneas (el negocio los referencia por la URL `/uploads/<nombre>`).
 - **Sprint 2**:
   - `TareaMantenimiento` (HU4): catálogo reusable de actividades, duración estimada y recursos.
   - `PlanMantenimiento` (HU6): regla periódica que asocia un equipo con una tarea y frecuencia.
@@ -136,7 +141,7 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
   - `ServicioExterno` (HU1): mantenimiento tercerizado (naturaleza PREVENTIVO/CORRECTIVO, proveedor, descripción, `costoFacturado` Decimal(14,2), factura opcional, informe PDF); vínculo 1:1 opcional con `MantenimientoProgramado`. CHECK: costo ≥ 0 y textos no vacíos.
   - `OrdenTrabajo.emitidaPorId` es opcional: nulo = emitida por el sistema (CHECK: solo si `origen = AUTOMATICO`).
   - `ConsentimientoTratamiento` (Ley 1581): quién aceptó qué versión y cuándo; `@@unique([usuarioId, versionPolitica])`; disparador que impide `UPDATE` y `DELETE`.
-  - **Ninguna clave foránea borra ni anula en cascada** (todas `RESTRICT`): la trazabilidad no se pierde por borrar un padre. La aplicación solo borra filas hoja (`eliminarInsumo`, `eliminarPendiente`).
+  - **Ninguna clave foránea borra ni anula en cascada** (todas `RESTRICT`): la trazabilidad no se pierde por borrar un padre. La aplicación solo borra filas hoja (`eliminarInsumo`, `eliminarPendiente`) y, al eliminar un equipo sin historial, su programación sin ejecutar (ver «Eliminar equipos»).
 - **Sprint 5** (migración `naturaleza_mantenimiento_e_indice_insumos`, SQL escrito a mano): sin tablas nuevas.
   - El enum `NaturalezaServicioExterno` pasó a `NaturalezaMantenimiento` (`RENAME TYPE`, sin perder datos) y `MantenimientoProgramado.naturaleza` (default `PREVENTIVO`) distingue el correctivo interno (HU19/HU20).
     Lo que genera un plan de frecuencia es preventivo. Un servicio externo solo cubre una ocurrencia de su misma naturaleza, y la naturaleza de un servicio que ya cubre una no se cambia (409).
@@ -149,6 +154,9 @@ React 18 + Vite 6 + React Router **v7** + Tailwind + axios. No TypeScript, no ex
 - **Auth state** — `src/context/AuthContext.jsx` holds `usuario` y mirrors it + JWT into `localStorage` (`thi_token`, `thi_usuario`).
 - **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`, `src/api/ordenesTrabajo.js`, `src/api/alertas.js`, `src/api/serviciosExternos.js`, `src/api/consentimiento.js`, `src/api/reportes.js` (incluye la descarga CSV como blob).
 - **Alertas context** — `src/context/AlertasContext.jsx` mantiene el contador de alertas pendientes (refresco cada 60 s) que consume el badge de la campana en `TopBar.jsx`. Las vistas llaman a `refrescar()` tras mutar alertas.
+- **Archivos protegidos** — `src/api/archivos.js` (`descargarArchivo`: GET con Bearer y `baseURL: ''`, devuelve un Blob), `ImagenProtegida.jsx` (imagen desde blob) y `EnlaceArchivo.jsx` (abre un manual/informe/evidencia en otra pestaña). Toda foto, manual, informe o evidencia se muestra con estos dos; nunca con `<img src>` ni `<a href>` directos.
+- **Usuarios (HU24)** — `/usuarios` (`pages/UsuariosView.jsx`, solo administrador): lista con búsqueda, crear/editar en modal, desactivar/reactivar y eliminar; las acciones salen de `permisos` por cuenta. `AuthContext` sincroniza el perfil (`/auth/me`) al abrir la app.
+- **Eliminar equipos** — `ModalEliminarEquipo.jsx` (en la ficha y en el listado); ante el 409 `EQUIPO_CON_HISTORIAL` ofrece «Marcar como Dado de baja». `ModalConfirmar.jsx` es la confirmación genérica.
 - **Consentimiento** — `src/components/ConsentimientoGate.jsx` envuelve todas las rutas: tras iniciar sesión muestra el aviso de tratamiento de datos (bloqueante, sin cerrar con el fondo) hasta que se acepta o se cierra sesión.
 - **Servicios externos (HU1)** — `src/components/ServiciosExternos.jsx` y `ModalServicioExterno.jsx`, dentro de `/equipos/:id` y solo para el administrador.
 - **Routing** — `src/App.jsx`. `<ProtectedRoute>` guards routes; live pages:
@@ -191,7 +199,7 @@ Periodo: `?desde=&hasta=` (AAAA-MM-DD, días de Colombia, máximo 3660 días); s
 - **Motor de alertas:** `server.js` lo ejecuta al arrancar y cada 12 h con un temporizador dentro del proceso (además del botón de la UI y `POST /api/alertas/generar`).
   No hay cron: si el servidor está caído en el momento del umbral, la alerta sale en el siguiente arranque, y con varias instancias correría en cada una (la unicidad de `Alerta` evita duplicados).
 - Pendiente de validar con el Product Owner (HU1): *"PDF en Word del manual"* (hoy solo se acepta PDF) y el campo *"ítem"* de la tarjeta maestra, que no existe en el modelo.
-- **Seguridad pendiente:** la bitácora de auditoría es un archivo plano (`src/logs/auditoria.log`) y no una tabla consultable; no hay gestión de usuarios (alta, baja, cambio de contraseña);
+- **Seguridad pendiente:** la bitácora de auditoría es un archivo plano (`src/logs/auditoria.log`) y no una tabla consultable; cambiar la contraseña de una cuenta **no revoca** los tokens ya emitidos (siguen valiendo hasta vencer, 8 h); desactivarla sí (se consulta en cada petición);
   el token de sesión vive en `localStorage` (riesgo XSS); el motor de OT/alertas corre dentro del proceso (con varias instancias correría en cada una; la unicidad de la base evita duplicados).
   Resuelto en el refuerzo: `/uploads` ya exige sesión, la subida valida el contenido real y el secreto JWT se valida al arrancar.
 - **Pendiente de las revisiones del refuerzo (sin CRITICAL ni HIGH abiertos):** la cookie `thi_archivos` lleva el mismo JWT de la API (mejor un token propio con `aud: archivos`)
@@ -200,7 +208,7 @@ Periodo: `?desde=&hasta=` (AAAA-MM-DD, días de Colombia, máximo 3660 días); s
   el disparador de consentimientos no bloquea `TRUNCATE` ni al dueño de la base (usar un rol de aplicación sin esos permisos); el CHECK de textos de `servicios_externos` solo recorta espacios.
 - **Base de datos:** paginar `GET /api/ordenes-trabajo` (el motor hará crecer la tabla). El índice de `insumos_utilizados.equipoInsumoId` ya se creó en Sprint 5.
   Para contar "OT emitidas por el sistema" usar `emitidaPorId IS NULL`, **no** `origen = AUTOMATICO`: una OT que el administrador materializa desde el cronograma también lleva `AUTOMATICO`.
-- **`activo` de usuario:** el middleware de sesión no consulta `Usuario.activo` en cada petición (solo el login, `/auth/me` y el servicio de `/uploads`); un usuario desactivado conserva su token hasta que expire (8 h).
+- **Sesión contra la base:** `verificarToken` hace una consulta por petición para leer rol y `activo`. A esta escala es aceptable; si pesara, cachear unos segundos.
 - **Mantenibilidad:** ~48 bloques `try/catch` casi idénticos en los controladores; `HojaEjecucionModal.jsx` (759 líneas; la firma y las evidencias ya se extrajeron a `CamposEvidencia.jsx`), `TareasYPlanesView.jsx`, `CronogramaView.jsx`,
   `OrdenesTrabajoView.jsx` y `ejecuciones.controller.js` superan las 600: extraer antes de agregarles código.
 

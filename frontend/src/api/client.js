@@ -16,7 +16,7 @@ function normalizarUrlsDeArchivos(valor) {
   if (!origenApi || valor === null || valor === undefined) return valor;
   if (typeof valor === 'string') return valor.startsWith('/uploads/') ? `${origenApi}${valor}` : valor;
   if (Array.isArray(valor)) return valor.map(normalizarUrlsDeArchivos);
-  if (typeof valor === 'object') {
+  if (Object.prototype.toString.call(valor) === '[object Object]') {
     return Object.fromEntries(
       Object.entries(valor).map(([clave, contenido]) => [clave, normalizarUrlsDeArchivos(contenido)])
     );

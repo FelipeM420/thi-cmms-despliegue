@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const express = require('express');
@@ -33,6 +34,16 @@ const prismaFalso = {
   },
 };
 
+// Respaldo en la base: lo que falta en disco (Render lo borra al reiniciar) se sirve desde aquí.
+const enRespaldo = new Map(); // nombre -> { tipo, datos }
+let respaldoCaido = false;
+const respaldoFalso = {
+  leer: async (nombre) => {
+    if (respaldoCaido) throw new Error('base caída');
+    return enRespaldo.get(nombre) ?? null;
+  },
+};
+
 const lecturas = [];
 let directorio;
 let servidor;
@@ -60,6 +71,7 @@ test.before(async () => {
       directorio,
       secreto: SECRETO,
       registrarLectura: (entrada) => lecturas.push(entrada),
+      respaldo: respaldoFalso,
     })
   );
   app.use(manejadorErrores);
@@ -76,14 +88,16 @@ test.after(() => {
 
 test.beforeEach(() => {
   lecturas.length = 0;
+  enRespaldo.clear();
+  respaldoCaido = false;
 });
 
 const token = (sub, opciones = {}) => jwt.sign({ sub, nombre: sub, rol: USUARIOS[sub]?.rol }, SECRETO, { expiresIn: '1h', ...opciones });
-const pedir = async (ruta, { sesion, metodo = 'GET', cookie } = {}) => {
-  const respuesta = await fetch(`${base}${ruta}`, {
-    method: metodo,
-    headers: sesion || cookie ? { Cookie: cookie ?? `thi_archivos=${encodeURIComponent(token(sesion))}` } : {},
-  });
+const pedir = async (ruta, { sesion, metodo = 'GET', cookie, bearer } = {}) => {
+  const headers = {};
+  if (sesion || cookie) headers.Cookie = cookie ?? `thi_archivos=${encodeURIComponent(token(sesion))}`;
+  if (bearer) headers.Authorization = bearer;
+  const respuesta = await fetch(`${base}${ruta}`, { method: metodo, headers });
   // Se lee el cuerpo completo: la bitácora se escribe al terminar la transferencia.
   const cuerpo = Buffer.from(await respuesta.arrayBuffer());
   await new Promise((resolver) => setImmediate(resolver));
@@ -108,6 +122,35 @@ test('un token firmado con "none" (sin firma) no sirve', async () => {
   const sinFirma = `${Buffer.from('{"alg":"none","typ":"JWT"}').toString('base64url')}.${Buffer.from('{"sub":"adm"}').toString('base64url')}.`;
   const respuesta = await pedir('/uploads/foto-2222.png', { cookie: `thi_archivos=${sinFirma}` });
   assert.equal(respuesta.status, 401);
+});
+
+// Vercel (frontend) y Render (API) son sitios distintos: la cookie SameSite no viaja y
+// un <img> no puede enviar Authorization. El frontend descarga el archivo con fetch y
+// el mismo Bearer que usa para la API, así que /uploads debe aceptarlo.
+test('también acepta el JWT de la API en Authorization: Bearer (sin cookie)', async () => {
+  const foto = await pedir('/uploads/foto-2222.png', { bearer: `Bearer ${token('tec2')}` });
+  assert.equal(foto.status, 200);
+  assert.deepEqual(foto.cuerpo, PNG);
+  const manual = await pedir('/uploads/manual-3333.pdf', { bearer: `Bearer ${token('adm')}` });
+  assert.equal(manual.status, 200);
+});
+
+test('el Bearer pasa por las mismas reglas: evidencia ajena 404, informe solo admin, baja 401', async () => {
+  assert.equal((await pedir('/uploads/evidenciaAntes-1111.png', { bearer: `Bearer ${token('tec1')}` })).status, 200);
+  assert.equal((await pedir('/uploads/evidenciaAntes-1111.png', { bearer: `Bearer ${token('tec2')}` })).status, 404);
+  assert.equal((await pedir('/uploads/informe-8888.pdf', { bearer: `Bearer ${token('tec1')}` })).status, 404);
+  assert.equal((await pedir('/uploads/foto-2222.png', { bearer: `Bearer ${token('baja')}` })).status, 401);
+});
+
+test('un Bearer inválido responde 401 y no cae a otra credencial', async () => {
+  const malFirmado = jwt.sign({ sub: 'adm' }, 'otra-llave-distinta-1234567890', { expiresIn: '1h' });
+  for (const bearer of ['Bearer basura', `Bearer ${malFirmado}`, 'Basic YWRtOnB3', 'Bearer ']) {
+    const respuesta = await pedir('/uploads/foto-2222.png', { bearer });
+    assert.equal(respuesta.status, 401, bearer.slice(0, 20));
+  }
+  // Con un Bearer presente pero inválido, una cookie válida no lo rescata.
+  const mezclado = await pedir('/uploads/foto-2222.png', { sesion: 'adm', bearer: 'Bearer basura' });
+  assert.equal(mezclado.status, 401);
 });
 
 test('una foto sirve con cabeceras seguras: sin caché, sin sniffing y aislada', async () => {
@@ -227,4 +270,94 @@ test('solo admite GET y HEAD', async () => {
   assert.equal(post.status, 405);
   const head = await pedir('/uploads/foto-2222.png', { sesion: 'adm', metodo: 'HEAD' });
   assert.equal(head.status, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Archivos que ya no están en disco pero sí en el respaldo de la base
+// ---------------------------------------------------------------------------
+
+test('un archivo que falta en disco se sirve desde el respaldo, con las mismas cabeceras seguras', async () => {
+  enRespaldo.set('foto-4444.png', { tipo: 'image/png', datos: PNG });
+  const respuesta = await pedir('/uploads/foto-4444.png', { sesion: 'tec2' });
+  assert.equal(respuesta.status, 200);
+  assert.equal(respuesta.headers.get('content-type'), 'image/png');
+  assert.equal(respuesta.headers.get('cache-control'), 'private, no-cache');
+  assert.equal(respuesta.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(respuesta.headers.get('content-security-policy'), /sandbox/);
+  assert.match(respuesta.headers.get('content-disposition'), /^inline/);
+  assert.deepEqual(respuesta.cuerpo, PNG);
+});
+
+test('desde el respaldo, el PDF mantiene su tipo y no lleva sandbox', async () => {
+  enRespaldo.set('manual-4444.pdf', { tipo: 'application/pdf', datos: PDF });
+  const respuesta = await pedir('/uploads/manual-4444.pdf', { bearer: `Bearer ${token('tec1')}` });
+  assert.equal(respuesta.status, 200);
+  assert.equal(respuesta.headers.get('content-type'), 'application/pdf');
+  assert.doesNotMatch(respuesta.headers.get('content-security-policy') ?? '', /sandbox/);
+  assert.deepEqual(respuesta.cuerpo, PDF);
+});
+
+test('desde el respaldo, el control de acceso es el mismo: evidencia ajena 404, informe solo admin', async () => {
+  enRespaldo.set('evidenciaAntes-4444.png', { tipo: 'image/png', datos: PNG });
+  enRespaldo.set('informe-4444.pdf', { tipo: 'application/pdf', datos: PDF });
+  EVIDENCIAS['/uploads/evidenciaAntes-4444.png'] = 'tec1';
+  try {
+    assert.equal((await pedir('/uploads/evidenciaAntes-4444.png', { sesion: 'tec1' })).status, 200);
+    assert.equal((await pedir('/uploads/evidenciaAntes-4444.png', { sesion: 'adm' })).status, 200);
+    assert.equal((await pedir('/uploads/evidenciaAntes-4444.png', { sesion: 'tec2' })).status, 404);
+    assert.equal((await pedir('/uploads/informe-4444.pdf', { sesion: 'adm' })).status, 200);
+    assert.equal((await pedir('/uploads/informe-4444.pdf', { sesion: 'tec1' })).status, 404);
+    assert.equal((await pedir('/uploads/evidenciaAntes-4444.png', {})).status, 401);
+  } finally {
+    delete EVIDENCIAS['/uploads/evidenciaAntes-4444.png'];
+  }
+});
+
+test('desde el respaldo, la evidencia es no-store y su lectura queda en la bitácora con su estado', async () => {
+  enRespaldo.set('evidenciaAntes-4444.png', { tipo: 'image/png', datos: PNG });
+  const respuesta = await pedir('/uploads/evidenciaAntes-4444.png', { sesion: 'adm' });
+  assert.equal(respuesta.status, 200);
+  assert.match(respuesta.headers.get('cache-control'), /no-store/);
+  assert.equal(lecturas.length, 1);
+  assert.equal(lecturas[0].archivo, 'evidenciaAntes-4444.png');
+  assert.equal(lecturas[0].estado, 200);
+  assert.equal(lecturas[0].denegado, false);
+});
+
+test('si no está ni en disco ni en el respaldo responde 404', async () => {
+  assert.equal((await pedir('/uploads/foto-7777.png', { sesion: 'adm' })).status, 404);
+});
+
+test('desde el respaldo se revalida con ETag (304) y HEAD no trae cuerpo', async () => {
+  enRespaldo.set('foto-4444.png', { tipo: 'image/png', datos: PNG });
+  const primera = await pedir('/uploads/foto-4444.png', { sesion: 'tec2' });
+  const etag = primera.headers.get('etag');
+  assert.ok(etag, 'debe traer ETag');
+  // http.request y no fetch: fetch añade Cache-Control: no-cache a una petición con If-None-Match
+  // (el navegador real no lo hace al revalidar) y Express la tomaría por no condicional.
+  const estadoCondicional = await new Promise((resolver, rechazar) => {
+    http
+      .get(`${base}/uploads/foto-4444.png`, { headers: { Cookie: `thi_archivos=${encodeURIComponent(token('tec2'))}`, 'If-None-Match': etag } }, (res) => {
+        res.resume();
+        resolver(res.statusCode);
+      })
+      .on('error', rechazar);
+  });
+  assert.equal(estadoCondicional, 304);
+  const head = await pedir('/uploads/foto-4444.png', { sesion: 'tec2', metodo: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.equal(head.cuerpo.length, 0);
+});
+
+test('lo que hay en disco manda sobre el respaldo', async () => {
+  enRespaldo.set('foto-2222.png', { tipo: 'image/png', datos: Buffer.from('viejo') });
+  const respuesta = await pedir('/uploads/foto-2222.png', { sesion: 'tec2' });
+  assert.deepEqual(respuesta.cuerpo, PNG);
+});
+
+test('si el respaldo falla (base caída) responde 500 genérico, no un 404 que oculte el problema', async () => {
+  respaldoCaido = true;
+  const respuesta = await pedir('/uploads/foto-8888.png', { sesion: 'adm' });
+  assert.equal(respuesta.status, 500);
+  assert.deepEqual(JSON.parse(respuesta.cuerpo.toString()), { error: 'Error interno del servidor.' });
 });

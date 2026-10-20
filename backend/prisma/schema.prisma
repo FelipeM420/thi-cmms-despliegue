@@ -142,6 +142,7 @@ model Usuario {
   email         String   @unique
   passwordHash  String
   rol           Rol
+  esAdministradorPrincipal Boolean @default(false)
   activo        Boolean  @default(true)
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
@@ -643,4 +644,22 @@ model ConsentimientoTratamiento {
   @@unique([usuarioId, versionPolitica])
   @@index([usuarioId])
   @@map("consentimientos_tratamiento")
+}
+
+// ---------------------------------------------------------------------------
+// Archivos subidos (fotos, manuales, evidencias, informes)
+// ---------------------------------------------------------------------------
+
+// Copia de cada archivo subido. El disco del hosting gratuito (Render) es efímero: se
+// vacía al reiniciar o redesplegar, y la base quedaba apuntando a archivos que ya no
+// existen. /uploads sirve desde el disco y, si falta ahí, desde esta tabla. Sin claves
+// foráneas: las filas de negocio referencian el archivo por su URL ("/uploads/<nombre>").
+model ArchivoSubido {
+  nombre   String   @id
+  tipo     String
+  tamano   Int
+  datos    Bytes
+  creadoEn DateTime @default(now())
+
+  @@map("archivos_subidos")
 }

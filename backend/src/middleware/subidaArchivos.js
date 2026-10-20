@@ -82,15 +82,48 @@ function verificarContenido(campos) {
   };
 }
 
+// Render (plan gratuito) y otros hosting dejan el disco en blanco al reiniciar o
+// redesplegar: un archivo que solo vive ahí desaparece y la base queda apuntando a
+// la nada. Con un `respaldo` cada archivo aceptado se copia además a la base de
+// datos (ver utils/respaldoArchivos.js), de donde /uploads lo recupera si falta en disco.
+function respaldarArchivos(respaldo) {
+  const quitarDelRespaldo = (archivos) =>
+    Promise.all(
+      archivos.map((archivo) =>
+        respaldo.eliminar(archivo.filename).catch((error) => console.error('No se pudo quitar un archivo del respaldo:', error.message))
+      )
+    );
+
+  return async (req, res, next) => {
+    const archivos = Object.values(req.files || {}).flat();
+    if (archivos.length === 0) return next();
+    try {
+      for (const archivo of archivos) await respaldo.guardar(archivo);
+    } catch (error) {
+      await eliminarArchivos(archivos);
+      await quitarDelRespaldo(archivos);
+      return next(error);
+    }
+    // Igual que en disco: si el controlador rechaza la solicitud (4xx) nadie referencia
+    // el archivo; con un fallo interno (5xx) se conserva porque pudo guardarse en la base.
+    res.once('finish', () => {
+      if (res.statusCode >= 400 && res.statusCode < 500) quitarDelRespaldo(archivos);
+    });
+    return next();
+  };
+}
+
 /**
  * Crea los middlewares de subida de una ruta. Se usa con spread:
  *   router.post('/', ...crearSubida({ foto: { tipo: 'imagen', etiqueta: 'El registro fotográfico' } }), controlador)
  *
  * @param {Record<string, { tipo: 'imagen'|'pdf', etiqueta: string }>} campos campos admitidos (uno por nombre, máximo un archivo cada uno)
- * @param {{ directorio?: string }} [opciones] carpeta destino (por defecto la de config/uploads)
- * @returns {Function[]} [multer envuelto, verificación de contenido]
+ * @param {{ directorio?: string, respaldo?: { guardar: Function, eliminar: Function } }} [opciones]
+ *   directorio: carpeta destino (por defecto la de config/uploads).
+ *   respaldo: si se pasa, cada archivo aceptado se copia también a la base de datos (utils/respaldoArchivos.js).
+ * @returns {Function[]} [multer envuelto, verificación de contenido, y el respaldo si se pidió]
  */
-function crearSubida(campos, { directorio = directorioUploads() } = {}) {
+function crearSubida(campos, { directorio = directorioUploads(), respaldo = null } = {}) {
   fs.mkdirSync(directorio, { recursive: true });
 
   const storage = multer.diskStorage({
@@ -119,7 +152,9 @@ function crearSubida(campos, { directorio = directorioUploads() } = {}) {
     },
   }).fields(Object.keys(campos).map((name) => ({ name, maxCount: 1 })));
 
-  return [protegerSubida(subir), verificarContenido(campos)];
+  const middlewares = [protegerSubida(subir), verificarContenido(campos)];
+  if (respaldo) middlewares.push(respaldarArchivos(respaldo));
+  return middlewares;
 }
 
 module.exports = { crearSubida };

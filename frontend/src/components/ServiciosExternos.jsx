@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FileText, Pencil, Plus } from 'lucide-react';
 import ModalServicioExterno from './ModalServicioExterno';
 import NaturalezaBadge from './NaturalezaBadge';
+import EnlaceArchivo from './EnlaceArchivo';
 import { formatearFecha, formatearMoneda } from '../utils/mantenimiento';
 
 // HU1 — servicios de mantenimiento contratados a proveedores, dentro de la
@@ -80,16 +81,14 @@ export default function ServiciosExternos({ equipo, onCambio }) {
                   <td className="py-2.5 pl-3 whitespace-nowrap">
                     <div className="flex items-center justify-end gap-3">
                       {s.informePdfUrl && (
-                        <a
-                          href={s.informePdfUrl}
-                          target="_blank"
-                          rel="noreferrer"
+                        <EnlaceArchivo
+                          url={s.informePdfUrl}
                           className="text-blue-600 hover:text-blue-700"
                           aria-label={`Ver informe del servicio del ${formatearFecha(s.fechaServicio)}`}
                           title="Ver informe (PDF)"
                         >
                           <FileText size={15} />
-                        </a>
+                        </EnlaceArchivo>
                       )}
                       <button
                         onClick={() => setModal({ servicio: s })}

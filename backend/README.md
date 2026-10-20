@@ -27,7 +27,11 @@ npm run dev               # Servidor nodemon en http://localhost:4000
 |---|---|---|---|
 | `POST` | `/api/auth/login` | Público | Inicio de sesión con JWT y rate-limiting (HU24) |
 | `GET` | `/api/auth/me` | Autenticado | Información del usuario en sesión |
-| `GET` | `/api/usuarios?rol=TECNICO` | Autenticado | Lista usuarios técnicos para asignación de tareas (HU7) |
+| `GET` | `/api/usuarios/tecnicos` | Administrador | Lista de técnicos asignables, del menos al más cargado (HU7) |
+| `GET` | `/api/usuarios` | Administrador | Todas las cuentas, con `permisos` { editar, cambiarEstado, eliminar } sobre cada una (HU24) |
+| `POST` | `/api/usuarios` | Administrador | Crear cuenta. Solo el administrador principal crea administradores; uno común, solo técnicos (HU24) |
+| `PUT` | `/api/usuarios/:id` | Administrador | Editar nombre, correo, contraseña, rol y estado (activar/desactivar). El administrador común solo edita técnicos y sus propios datos (HU24) |
+| `DELETE` | `/api/usuarios/:id` | Administrador | Eliminar la cuenta; si ya tiene actividad registrada queda desactivada (trazabilidad) (HU24) |
 
 ### Gestión de Equipos (Sprint 1)
 | Método | Ruta | Rol requerido | Descripción / HU |
@@ -35,7 +39,8 @@ npm run dev               # Servidor nodemon en http://localhost:4000
 | `GET` | `/api/equipos` | Autenticado | Listado con filtros (`buscar`, `zona`, `tipoActivo`, `estado`) (HU3) |
 | `GET` | `/api/equipos/:id` | Autenticado | Ficha técnica completa del equipo (HU1, HU3) |
 | `POST` | `/api/equipos` | Administrador | Registro de equipo con subida de foto y manual PDF (HU1, HU2) |
-| `PUT` | `/api/equipos/:id` | Administrador | Actualización de datos del equipo y archivos (HU1, HU2) |
+| `PUT` | `/api/equipos/:id` | Administrador | Actualización de datos del equipo y archivos; también cambia el estado (p. ej. `DADO_DE_BAJA`) con un cuerpo JSON (HU1, HU2) |
+| `DELETE` | `/api/equipos/:id` | Administrador | Elimina un equipo registrado por error junto con su programación sin ejecutar. Con historial responde `409` (`EQUIPO_CON_HISTORIAL`): hay que darlo de baja |
 
 ### Tareas y Planes de Mantenimiento (Sprint 2 - HU4, HU6)
 | Método | Ruta | Rol requerido | Descripción / HU |

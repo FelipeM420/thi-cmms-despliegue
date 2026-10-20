@@ -2,6 +2,8 @@
 // fotografías antes / después. Extraídos de HojaEjecucionModal.jsx para que ese
 // archivo no siga creciendo.
 
+import EnlaceArchivo from '../../components/EnlaceArchivo';
+
 const label = 'text-slate-700 text-sm font-medium block mb-1.5';
 
 // La firma la fija el servidor con el usuario autenticado y la hora real; aquí
@@ -35,9 +37,9 @@ export function ArchivoEvidencia({ etiqueta, file, urlActual, onChange }) {
         <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => onChange(e.target.files[0] || null)} />
       </label>
       {urlActual && !file && (
-        <a href={urlActual} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-medium text-blue-600">
+        <EnlaceArchivo url={urlActual} className="mt-1 block text-left text-xs font-medium text-blue-600">
           Ver imagen actual
-        </a>
+        </EnlaceArchivo>
       )}
     </div>
   );

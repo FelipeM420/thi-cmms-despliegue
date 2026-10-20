@@ -27,6 +27,18 @@ export async function actualizarEquipo(id, formData) {
   return data;
 }
 
+// Corrige un equipo registrado por error. 409 con codigo EQUIPO_CON_HISTORIAL si ya tiene
+// trabajo registrado: ahí se usa cambiarEstadoEquipo(id, 'DADO_DE_BAJA').
+export async function eliminarEquipo(id) {
+  await client.delete(`/equipos/${id}`);
+}
+
+// Cambia solo el estado (JSON, sin archivos): dar de baja, reactivar o pasar a mantenimiento.
+export async function cambiarEstadoEquipo(id, estado) {
+  const { data } = await client.put(`/equipos/${id}`, { estado });
+  return data;
+}
+
 // Construye el FormData a partir del estado plano del formulario, evitando
 // repetir esta conversión en cada pantalla que crea o edita un equipo.
 export function construirFormDataEquipo(campos, archivos = {}) {

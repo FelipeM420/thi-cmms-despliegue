@@ -11,6 +11,7 @@ import OrdenesTrabajoView from './pages/OrdenesTrabajoView';
 import AlertasView from './pages/AlertasView';
 import Dashboard from './pages/Dashboard';
 import Reportes from './pages/Reportes';
+import UsuariosView from './pages/UsuariosView';
 
 export default function App() {
   const { usuario } = useAuth();
@@ -41,6 +42,7 @@ export default function App() {
         {/* HU19–HU23 — Sprint 5: dashboard (según el rol) y reportes (solo administrador) */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/reportes" element={<ProtectedRoute soloAdmin><Reportes /></ProtectedRoute>} />
+        <Route path="/usuarios" element={<ProtectedRoute soloAdmin><UsuariosView /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to={usuario ? '/equipos' : '/login'} replace />} />
       </Routes>
