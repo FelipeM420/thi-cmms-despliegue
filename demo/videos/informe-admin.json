@@ -1,0 +1,70 @@
+{
+  "rol": "admin",
+  "fecha": "2026-10-06T03:54:47.001Z",
+  "pasos": [
+    {
+      "paso": "⭐ Administrador: inicia sesión con su correo institucional",
+      "ok": true
+    },
+    {
+      "paso": "Dashboard: indicadores generales del mantenimiento",
+      "ok": true
+    },
+    {
+      "paso": "Equipos: inventario de activos de la planta",
+      "ok": true
+    },
+    {
+      "paso": "Detalle de un equipo: ficha, mantenimientos e historial",
+      "ok": true
+    },
+    {
+      "paso": "Mantenimiento: cronograma mensual con todas las ocurrencias",
+      "ok": true
+    },
+    {
+      "paso": "Programa un nuevo mantenimiento sobre un equipo",
+      "ok": true
+    },
+    {
+      "paso": "Abre el mantenimiento: los técnicos salen ordenados por menor esfuerzo (★ Recomendado)",
+      "ok": true
+    },
+    {
+      "paso": "🔩 Asigna al técnico recomendado (el de menos carga de trabajo)",
+      "ok": true
+    },
+    {
+      "paso": "Órdenes de trabajo: seguimiento de todas las OT",
+      "ok": true
+    },
+    {
+      "paso": "El sistema genera las OT de la semana automáticamente",
+      "ok": true
+    },
+    {
+      "paso": "Alertas: preventivas (15, 8 y 1 día) y vencidas",
+      "ok": true
+    },
+    {
+      "paso": "Reportes (solo administrador): costos por trimestre",
+      "ok": true
+    },
+    {
+      "paso": "Reportes: horas de intervención por equipo",
+      "ok": true
+    },
+    {
+      "paso": "Reportes: participación y tipo de intervención por área",
+      "ok": true
+    },
+    {
+      "paso": "Reportes: gasto en insumos y horas-hombre por técnico",
+      "ok": true
+    },
+    {
+      "paso": "Cierra sesión",
+      "ok": true
+    }
+  ]
+}

@@ -19,6 +19,14 @@ export const COLOR_TIPO_MANTENIMIENTO = {
   EXTERNO_CORRECTIVO: 'bg-amber-300',
 };
 
+// Los mismos colores en hexadecimal, para los gráficos SVG.
+export const HEX_TIPO_MANTENIMIENTO = {
+  INTERNO_PREVENTIVO: '#059669',
+  EXTERNO_PREVENTIVO: '#6ee7b7',
+  INTERNO_CORRECTIVO: '#f59e0b',
+  EXTERNO_CORRECTIVO: '#fcd34d',
+};
+
 export const ETIQUETA_FUENTE = { INTERNO: 'Interno', EXTERNO: 'Externo' };
 
 // HU22 — SIN_CLASIFICAR: insumo escrito a mano, sin ficha en el inventario.
@@ -83,4 +91,25 @@ export function formatearNumero(valor) {
 export function formatearPorcentaje(valor) {
   if (valor === null || valor === undefined) return '—';
   return `${Number(valor).toLocaleString('es-CO', { maximumFractionDigits: 1 })} %`;
+}
+
+// Colores categóricos en orden fijo para gráficos de partes (≤ 5) y "Otras".
+export const PALETA_CATEGORIAS = ['#2563eb', '#059669', '#f59e0b', '#8b5cf6', '#06b6d4'];
+export const COLOR_OTRAS = '#94a3b8';
+
+/** Primeras `n` filas como segmentos de dona; el resto se pliega en "Otras". */
+export function topMasOtras(filas, n = 5) {
+  const segmentos = filas.slice(0, n).map((f, i) => ({ ...f, color: PALETA_CATEGORIAS[i] }));
+  const resto = filas.slice(n).reduce((suma, f) => suma + f.valor, 0);
+  if (resto > 0) segmentos.push({ clave: 'otras', etiqueta: 'Otras', valor: resto, color: COLOR_OTRAS });
+  return segmentos;
+}
+
+/** Monto corto para el centro de una dona: $ 1,4 M en vez de $ 1.408.166,67. */
+export function monedaCorta(n) {
+  return n >= 1e6
+    ? `$ ${(n / 1e6).toLocaleString('es-CO', { maximumFractionDigits: 1 })} M`
+    : n >= 1e3
+      ? `$ ${Math.round(n / 1e3)} mil`
+      : `$ ${n}`;
 }

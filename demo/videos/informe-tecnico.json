@@ -1,0 +1,50 @@
+{
+  "rol": "tecnico",
+  "fecha": "2026-10-06T03:55:13.274Z",
+  "pasos": [
+    {
+      "paso": "🔩 Técnico: inicia sesión con su cuenta",
+      "ok": true
+    },
+    {
+      "paso": "Acepta el aviso de tratamiento de datos (Ley 1581)",
+      "ok": true
+    },
+    {
+      "paso": "Dashboard del técnico: su trabajo de hoy",
+      "ok": true
+    },
+    {
+      "paso": "Mis Tareas: solo lo que el administrador le asignó",
+      "ok": true
+    },
+    {
+      "paso": "Abre la hoja de ejecución de su tarea",
+      "ok": true
+    },
+    {
+      "paso": "Inicia el mantenimiento (queda registrada la hora)",
+      "ok": true
+    },
+    {
+      "paso": "Registra tiempos, valor hora, observaciones y firma de conformidad",
+      "ok": true
+    },
+    {
+      "paso": "Finaliza el mantenimiento: los costos quedan congelados",
+      "ok": true
+    },
+    {
+      "paso": "Órdenes de trabajo asignadas al técnico",
+      "ok": true
+    },
+    {
+      "paso": "Alertas de sus mantenimientos próximos",
+      "ok": true
+    },
+    {
+      "paso": "Cierra sesión",
+      "ok": true
+    }
+  ]
+}

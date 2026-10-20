@@ -42,7 +42,22 @@ const app = express();
 // clickjacking, sniffing de MIME type, y expone menos huella del stack).
 app.use(helmet());
 
-app.use(cors());
+// En producción el frontend (Vercel) y la API (Render) usan dominios distintos.
+// FRONTEND_URL admite una lista separada por comas para permitir, por ejemplo,
+// producción y una URL de demostración. Las peticiones sin Origin (health
+// checks y herramientas servidor a servidor) no se bloquean.
+const origenesPermitidos = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((origen) => origen.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origen, callback) {
+    if (!origen || origenesPermitidos.includes(origen)) return callback(null, true);
+    return callback(new Error('Origen no permitido por CORS.'));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // ISO 25010 (Seguridad) — tope de escrituras por IP ANTES de la bitácora: un

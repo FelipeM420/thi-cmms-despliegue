@@ -1,14 +1,16 @@
 import { useCallback } from 'react';
+import { conDistintivo } from '../../utils/usuarios';
 import { Package, HardHat, Wallet } from 'lucide-react';
 import { reporteRecursos } from '../../api/reportes';
 import useReporte from '../../hooks/useReporte';
 import TarjetaIndicador from '../../components/reportes/TarjetaIndicador';
-import BarrasHorizontales from '../../components/reportes/BarrasHorizontales';
+import Dona from '../../components/reportes/Dona';
+import ColumnasApiladas from '../../components/reportes/ColumnasApiladas';
 import TablaReporte from '../../components/reportes/TablaReporte';
 import BotonExportar from '../../components/reportes/BotonExportar';
 import EstadoReporte from '../../components/reportes/EstadoReporte';
 import { etiquetaUnidad, formatearMoneda } from '../../utils/mantenimiento';
-import { ETIQUETA_TIPO_ACTIVO, formatearHoras, formatearNumero } from '../../utils/reportes';
+import { ETIQUETA_TIPO_ACTIVO, formatearHoras, formatearNumero, monedaCorta, topMasOtras } from '../../utils/reportes';
 
 const MAX_BARRAS = 8;
 
@@ -38,7 +40,7 @@ const columnasInsumos = [
 ];
 
 const columnasManoDeObra = [
-  { clave: 'tecnico', titulo: 'Técnico', render: (t) => <span className="font-medium text-slate-900">{t.tecnico.nombre}</span> },
+  { clave: 'tecnico', titulo: 'Técnico', render: (t) => <span className="font-medium text-slate-900">{conDistintivo('TECNICO', t.tecnico.nombre)}</span> },
   { clave: 'ejecuciones', titulo: 'Ejecuciones', numerica: true, render: (t) => t.ejecuciones },
   { clave: 'horas', titulo: 'Horas trabajadas', numerica: true, render: (t) => formatearHoras(t.minutos / 60) },
   { clave: 'horasHombre', titulo: 'Horas-hombre', numerica: true, render: (t) => formatearHoras(t.horasHombre) },
@@ -75,17 +77,33 @@ export default function RecursosReporte({ periodo }) {
                 <BotonExportar ruta="recursos" filtros={{ ...periodo, seccion: 'insumos' }} etiqueta="Exportar insumos" />
               </div>
               {datos.insumos.length > 0 && (
-                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <BarrasHorizontales
-                    titulo="Mayor gasto"
-                    color="bg-emerald-600"
-                    filas={datos.insumos.slice(0, MAX_BARRAS).map((i, n) => ({
-                      clave: `${n}-${i.descripcion}`,
-                      etiqueta: i.descripcion,
-                      valor: i.costo,
-                      texto: formatearMoneda(i.costo),
-                    }))}
-                  />
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+                  <div className="rounded-xl border border-slate-200 bg-white p-5 lg:col-span-2">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Gasto por tipo de activo</h3>
+                    <Dona
+                      formatear={formatearMoneda}
+                      centro={{ valor: monedaCorta(datos.totales.insumos), etiqueta: 'en insumos' }}
+                      segmentos={topMasOtras(
+                        datos.porTipo.map((t) => ({ clave: t.tipoActivo, etiqueta: ETIQUETA_TIPO_ACTIVO[t.tipoActivo] || t.tipoActivo, valor: t.costo }))
+                      )}
+                    />
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-5 lg:col-span-3">
+                    <h3 className="mb-3 text-sm font-semibold text-slate-700">Insumos de mayor gasto</h3>
+                    <ColumnasApiladas
+                      titulo="Insumos de mayor gasto"
+                      series={[['costo', 'Costo']]}
+                      colores={{ costo: '#059669' }}
+                      formatear={formatearMoneda}
+                      columnas={datos.insumos.slice(0, 8).map((i, n) => ({
+                        clave: `${n}-${i.descripcion}`,
+                        etiqueta: i.descripcion,
+                        total: i.costo,
+                        segmentos: { costo: i.costo },
+                        extra: [`${i.cantidad} ${i.unidad ?? ''} · ${i.usos} uso(s)`],
+                      }))}
+                    />
+                  </div>
                 </div>
               )}
               <TablaReporte
@@ -101,6 +119,25 @@ export default function RecursosReporte({ periodo }) {
                 <h3 className="text-base font-semibold text-slate-900">Mano de obra</h3>
                 <BotonExportar ruta="recursos" filtros={{ ...periodo, seccion: 'mano-de-obra' }} etiqueta="Exportar mano de obra" />
               </div>
+              {datos.manoDeObra.tecnicos.length > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-white p-5">
+                  <h3 className="mb-3 text-sm font-semibold text-slate-700">Horas-hombre por técnico</h3>
+                  <ColumnasApiladas
+                    titulo="Horas-hombre por técnico"
+                    series={[['horas', 'Horas-hombre']]}
+                    colores={{ horas: '#f59e0b' }}
+                    formatear={formatearHoras}
+                    formatearEje={(v) => `${v} h`}
+                    columnas={datos.manoDeObra.tecnicos.map((t) => ({
+                      clave: t.tecnico.id,
+                      etiqueta: conDistintivo('TECNICO', t.tecnico.nombre.split(' ')[0]),
+                      total: t.horasHombre,
+                      segmentos: { horas: t.horasHombre },
+                      extra: [t.tecnico.nombre, `${t.ejecuciones} ejecuciones · ${formatearMoneda(t.costo)}`],
+                    }))}
+                  />
+                </div>
+              )}
               <TablaReporte
                 titulo="Mano de obra por técnico"
                 columnas={columnasManoDeObra}

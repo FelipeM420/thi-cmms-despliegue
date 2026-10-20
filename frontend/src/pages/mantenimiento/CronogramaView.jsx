@@ -28,6 +28,7 @@ import {
   matrizMes,
   nombreMes,
 } from '../../utils/mantenimiento';
+import { conDistintivo, etiquetaTecnico } from '../../utils/usuarios';
 
 const CERRADO = ['COMPLETADO', 'NO_EJECUTADO', 'CANCELADO'];
 // Un mantenimiento cerrado sin haberse ejecutado se reprograma clonándolo.
@@ -232,7 +233,7 @@ export default function CronogramaView() {
             <option value="">Técnico: Todos</option>
             <option value="SIN_ASIGNAR">Sin asignar</option>
             {tecnicos.map((t) => (
-              <option key={t.id} value={t.id}>{t.nombre}</option>
+              <option key={t.id} value={t.id}>{conDistintivo('TECNICO', t.nombre)}</option>
             ))}
           </select>
 
@@ -380,7 +381,7 @@ export default function CronogramaView() {
                     <td className="px-5 py-3.5"><PrioridadBadge prioridad={it.prioridad} /></td>
                     <td className="px-5 py-3.5"><EstadoMantenimientoBadge estado={it.estado} /></td>
                     <td className="px-5 py-3.5 text-slate-600">
-                      {it.tecnicoAsignado?.nombre || <span className="text-slate-400">Sin asignar</span>}
+                      {it.tecnicoAsignado ? conDistintivo('TECNICO', it.tecnicoAsignado.nombre) : <span className="text-slate-400">Sin asignar</span>}
                     </td>
                   </tr>
                 ))}
@@ -498,8 +499,8 @@ function DetalleMantenimiento({ item, tecnicos, onClose, onCambio, onVerHoja, on
           <div className={fila}>
             <dt className="text-slate-500">Asignado a</dt>
             <dd className="text-right text-slate-700">
-              {item.tecnicoAsignado.nombre}
-              {item.asignadoPor && <span className="block text-xs text-slate-400">por {item.asignadoPor.nombre} · {formatearFechaHora(item.fechaAsignacion)}</span>}
+              {conDistintivo('TECNICO', item.tecnicoAsignado.nombre)}
+              {item.asignadoPor && <span className="block text-xs text-slate-400">por {conDistintivo('ADMINISTRADOR', item.asignadoPor.nombre)} · {formatearFechaHora(item.fechaAsignacion)}</span>}
             </dd>
           </div>
         )}
@@ -578,7 +579,7 @@ function DetalleMantenimiento({ item, tecnicos, onClose, onCambio, onVerHoja, on
               >
                 <option value="">Selecciona un técnico…</option>
                 {tecnicos.map((t) => (
-                  <option key={t.id} value={t.id}>{t.nombre}</option>
+                  <option key={t.id} value={t.id}>{etiquetaTecnico(t)}</option>
                 ))}
               </select>
               <button

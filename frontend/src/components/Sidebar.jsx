@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { LayoutGrid, Box, CalendarClock, ClipboardList, Bell, BarChart3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { conDistintivo } from '../utils/usuarios';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutGrid },
@@ -60,8 +61,8 @@ export default function Sidebar() {
           {iniciales || '·'}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-slate-100 text-sm font-medium truncate">{usuario?.nombre}</p>
-          <p className="text-slate-400 text-xs">{usuario?.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Técnico'}</p>
+          <p className="text-slate-100 text-sm font-medium truncate">{conDistintivo(usuario?.rol, usuario?.nombre)}</p>
+          <p className="text-slate-400 text-xs">{usuario?.rol === 'ADMINISTRADOR' ? '⭐ Administrador' : '🔩 Técnico'}</p>
         </div>
         <button onClick={logout} title="Cerrar sesión" className="text-slate-400 hover:text-white text-xs">
           Salir

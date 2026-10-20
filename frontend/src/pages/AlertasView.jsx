@@ -19,6 +19,7 @@ import {
   ETIQUETA_ESTADO_ALERTA,
   formatearFecha,
 } from '../utils/mantenimiento';
+import { conDistintivo } from '../utils/usuarios';
 
 const FILTROS_VACIOS = { buscar: '', tipo: '', estado: '', equipo: '' };
 
@@ -255,7 +256,7 @@ export default function AlertasView() {
                     {ETIQUETA_ESTADO_ALERTA[a.estado] || a.estado}
                   </span>
                   {a.tecnicoDestino && (
-                    <span className="text-xs text-slate-400">· {a.tecnicoDestino.nombre}</span>
+                    <span className="text-xs text-slate-400">· {conDistintivo('TECNICO', a.tecnicoDestino.nombre)}</span>
                   )}
                 </div>
                 <p className="font-medium text-slate-900">{a.mensaje}</p>

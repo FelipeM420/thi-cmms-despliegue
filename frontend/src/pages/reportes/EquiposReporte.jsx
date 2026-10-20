@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { reporteEquipos } from '../../api/reportes';
 import useReporte from '../../hooks/useReporte';
-import BarrasHorizontales from '../../components/reportes/BarrasHorizontales';
+import ColumnasApiladas from '../../components/reportes/ColumnasApiladas';
 import TablaReporte from '../../components/reportes/TablaReporte';
 import BotonExportar from '../../components/reportes/BotonExportar';
 import EstadoReporte from '../../components/reportes/EstadoReporte';
@@ -74,15 +74,25 @@ export default function EquiposReporte({ periodo }) {
         {datos && (
           <>
             <section className="rounded-xl border border-slate-200 bg-white p-5">
-              <BarrasHorizontales
+              <h3 className="mb-3 text-sm font-semibold text-slate-700">
+                {porFallas ? 'Correctivos por equipo' : 'Horas de intervención por equipo'}
+              </h3>
+              <ColumnasApiladas
                 titulo={porFallas ? 'Correctivos por equipo' : 'Horas de intervención por equipo'}
-                color={porFallas ? 'bg-amber-500' : 'bg-blue-600'}
-                filas={datos.equipos.slice(0, MAX_BARRAS).map((e) => ({
-                  clave: e.equipo.id,
-                  etiqueta: `${e.equipo.referencia} · ${e.equipo.nombre}`,
-                  valor: porFallas ? e.correctivas : e.horas,
-                  texto: porFallas ? `${e.correctivas}` : formatearHoras(e.horas),
-                }))}
+                series={[['valor', porFallas ? 'Correctivos' : 'Horas']]}
+                colores={{ valor: porFallas ? '#f59e0b' : '#2563eb' }}
+                formatear={(v) => (porFallas ? `${v}` : formatearHoras(v))}
+                formatearEje={(v) => (porFallas ? `${v}` : `${v} h`)}
+                columnas={datos.equipos.slice(0, MAX_BARRAS).map((e) => {
+                  const valor = porFallas ? e.correctivas : e.horas;
+                  return {
+                    clave: e.equipo.id,
+                    etiqueta: e.equipo.referencia,
+                    total: valor,
+                    segmentos: { valor },
+                    extra: [e.equipo.nombre, `${e.intervenciones} intervenciones · ${e.preventivas} prev. · ${e.correctivas} corr.`],
+                  };
+                })}
               />
               <p className="mt-4 text-xs text-slate-500">
                 Las horas son las registradas en las ejecuciones internas. Un servicio externo cuenta como intervención, sin horas.

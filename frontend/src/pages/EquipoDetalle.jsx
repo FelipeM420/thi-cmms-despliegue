@@ -8,6 +8,7 @@ import ServiciosExternos from '../components/ServiciosExternos';
 import { obtenerEquipo } from '../api/equipos';
 import { useAuth } from '../context/AuthContext';
 import { ESTADOS_MANTENIMIENTO, formatearFecha, formatearMoneda } from '../utils/mantenimiento';
+import { conDistintivo } from '../utils/usuarios';
 
 const ETIQUETAS_TIPO = { EQUIPO: 'Equipo', INSUMO: 'Insumo', MATERIA_PRIMA: 'Materia prima', CONSUMIBLE: 'Consumible' };
 
@@ -240,7 +241,7 @@ function HistorialMantenimiento({ intervenciones }) {
                 </td>
                 <td className="py-2.5"><EstadoMantenimientoBadge estado={m.estado} /></td>
                 <td className="py-2.5 text-slate-600">
-                  {m.tecnicoAsignado?.nombre || <span className="text-slate-400">Sin asignar</span>}
+                  {m.tecnicoAsignado ? conDistintivo('TECNICO', m.tecnicoAsignado.nombre) : <span className="text-slate-400">Sin asignar</span>}
                 </td>
                 <td className="py-2.5 text-slate-600">
                   {m.registroEjecucion?.finalizadoEn && m.registroEjecucion.minutosTrabajados != null

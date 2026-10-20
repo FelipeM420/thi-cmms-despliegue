@@ -22,6 +22,7 @@ import {
   formatearFechaHora,
   hoyISO,
 } from '../utils/mantenimiento';
+import { conDistintivo, etiquetaTecnico } from '../utils/usuarios';
 
 const input =
   'w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -200,7 +201,7 @@ export default function OrdenesTrabajoView() {
             >
               <option value="">Técnico: Todos</option>
               {tecnicos.map((t) => (
-                <option key={t.id} value={t.id}>{t.nombre}</option>
+                <option key={t.id} value={t.id}>{conDistintivo('TECNICO', t.nombre)}</option>
               ))}
             </select>
           )}
@@ -284,7 +285,7 @@ export default function OrdenesTrabajoView() {
                     {o.tarea?.nombre || <span className="text-slate-400">Solicitud directa</span>}
                   </td>
                   <td className="cursor-pointer px-5 py-3.5 text-slate-600" onClick={() => setDetalle(o)}>
-                    {o.tecnicoAsignado?.nombre || <span className="text-slate-400">Sin asignar</span>}
+                    {o.tecnicoAsignado ? conDistintivo('TECNICO', o.tecnicoAsignado.nombre) : <span className="text-slate-400">Sin asignar</span>}
                   </td>
                   <td className="px-5 py-3.5"><PrioridadBadge prioridad={o.prioridad} /></td>
                   <td className="px-5 py-3.5"><EstadoOrdenBadge estado={o.estado} /></td>
@@ -467,7 +468,7 @@ function ModalEmitirOrden({ equipos, tecnicos, onClose, onEmitida }) {
                 >
                   <option value="">Sin asignar</option>
                   {tecnicos.map((t) => (
-                    <option key={t.id} value={t.id}>{t.nombre}</option>
+                    <option key={t.id} value={t.id}>{etiquetaTecnico(t)}</option>
                   ))}
                 </select>
               </div>
@@ -580,7 +581,7 @@ function ModalDetalleOrden({ orden, onClose, onDescargar, onCambio }) {
         </div>
         <div className={fila}>
           <dt className="text-slate-500">Técnico asignado</dt>
-          <dd className="text-slate-700">{orden.tecnicoAsignado?.nombre || 'Sin asignar'}</dd>
+          <dd className="text-slate-700">{orden.tecnicoAsignado ? conDistintivo('TECNICO', orden.tecnicoAsignado.nombre) : 'Sin asignar'}</dd>
         </div>
         <div className={fila}>
           <dt className="text-slate-500">Origen</dt>
@@ -593,7 +594,7 @@ function ModalDetalleOrden({ orden, onClose, onDescargar, onCambio }) {
           <dd className="text-right text-slate-700">
             {formatearFechaHora(orden.fechaEmision)}
             <span className="block text-xs text-slate-400">
-              {orden.emitidaPor ? `por ${orden.emitidaPor.nombre}` : 'por el sistema (automática)'}
+              {orden.emitidaPor ? `por ${conDistintivo('ADMINISTRADOR', orden.emitidaPor.nombre)}` : 'por el sistema (automática)'}
             </span>
           </dd>
         </div>

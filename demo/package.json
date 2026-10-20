@@ -1,0 +1,12 @@
+{
+  "name": "thi-cmms-demo",
+  "private": true,
+  "description": "Recorrido grabado (video) de cada rol del CMMS, para demostración y sesiones de testing.",
+  "scripts": {
+    "demo": "node recorrido.js",
+    "demo:admin": "node recorrido.js admin",
+    "demo:tecnico": "node recorrido.js tecnico",
+    "demo:todo": "node recorrido.js todo"
+  },
+  "dependencies": { "playwright-core": "^1.49.0" }
+}

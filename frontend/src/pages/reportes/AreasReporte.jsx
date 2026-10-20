@@ -1,12 +1,13 @@
 import { useCallback } from 'react';
 import { reporteAreas } from '../../api/reportes';
 import useReporte from '../../hooks/useReporte';
-import BarrasHorizontales from '../../components/reportes/BarrasHorizontales';
+import Dona from '../../components/reportes/Dona';
+import ColumnasApiladas from '../../components/reportes/ColumnasApiladas';
 import TablaReporte from '../../components/reportes/TablaReporte';
 import BotonExportar from '../../components/reportes/BotonExportar';
 import EstadoReporte from '../../components/reportes/EstadoReporte';
 import { formatearMoneda } from '../../utils/mantenimiento';
-import { formatearHoras } from '../../utils/reportes';
+import { formatearHoras, topMasOtras } from '../../utils/reportes';
 
 const MAX_BARRAS = 10;
 
@@ -35,17 +36,32 @@ export default function AreasReporte({ periodo }) {
       <EstadoReporte cargando={cargando && !datos} error={error} vacio={datos?.areas.length === 0} mensajeVacio="No hubo intervenciones en el periodo.">
         {datos && (
           <>
-            <section className="rounded-xl border border-slate-200 bg-white p-5">
-              <BarrasHorizontales
-                titulo="Intervenciones por área"
-                filas={datos.areas.slice(0, MAX_BARRAS).map((a) => ({
-                  clave: a.zona,
-                  etiqueta: a.zona,
-                  valor: a.intervenciones,
-                  texto: `${a.intervenciones}`,
-                }))}
-              />
-            </section>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <section className="rounded-xl border border-slate-200 bg-white p-5">
+                <h3 className="mb-4 text-sm font-semibold text-slate-700">Participación de cada área</h3>
+                <Dona
+                  segmentos={topMasOtras(datos.areas.map((a) => ({ clave: a.zona, etiqueta: a.zona, valor: a.intervenciones })))}
+                  centro={{ valor: datos.totales.intervenciones, etiqueta: 'intervenciones' }}
+                />
+              </section>
+              <section className="rounded-xl border border-slate-200 bg-white p-5">
+                <h3 className="mb-4 text-sm font-semibold text-slate-700">Preventivas y correctivas por área</h3>
+                <ColumnasApiladas
+                  titulo="Preventivas y correctivas por área"
+                  series={[['preventivas', 'Preventivas'], ['correctivas', 'Correctivas']]}
+                  colores={{ preventivas: '#059669', correctivas: '#f59e0b' }}
+                  formatear={(v) => `${v}`}
+                  formatearEje={(v) => `${v}`}
+                  columnas={datos.areas.slice(0, MAX_BARRAS).map((a) => ({
+                    clave: a.zona,
+                    etiqueta: a.zona,
+                    total: a.preventivas + a.correctivas,
+                    segmentos: { preventivas: a.preventivas, correctivas: a.correctivas },
+                    extra: [`${a.equipos} equipos · ${formatearHoras(a.horas)}`],
+                  }))}
+                />
+              </section>
+            </div>
             <p className="text-sm text-slate-500">
               {datos.totales.intervenciones} intervenciones en {datos.totales.areas} áreas.
             </p>

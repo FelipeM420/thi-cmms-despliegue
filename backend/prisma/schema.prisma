@@ -8,7 +8,6 @@
 // ============================================================================
 // Los modelos de Sprint 5 (indicadores y reportes) se apoyan en los datos ya
 // persistidos aquí; no requieren tablas nuevas salvo agregados de consulta.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -69,6 +68,7 @@ enum PrioridadMantenimiento {
   ALTA
   CRITICA
 }
+/** Public form of an intervention (HU23): weights and hours, without calculation fields. */
 
 // Estado de una ocurrencia concreta del cronograma. En Sprint 2 solo se usan
 // PROGRAMADO / ASIGNADO / CANCELADO; los estados de ejecución (EN_EJECUCION,

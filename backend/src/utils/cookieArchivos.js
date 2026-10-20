@@ -14,8 +14,15 @@
 const NOMBRE_COOKIE = 'thi_archivos';
 const RUTA_COOKIE = '/uploads';
 
-function atributosBase({ secure }) {
-  return [`Path=${RUTA_COOKIE}`, 'HttpOnly', 'SameSite=Strict', ...(secure ? ['Secure'] : [])];
+function sameSiteCookie(env = process.env) {
+  const valor = env.COOKIE_SAME_SITE?.toLowerCase();
+  if (valor === 'lax') return 'Lax';
+  if (valor === 'none') return 'None';
+  return 'Strict';
+}
+
+function atributosBase({ secure, sameSite = sameSiteCookie() }) {
+  return [`Path=${RUTA_COOKIE}`, 'HttpOnly', `SameSite=${sameSite}`, ...(secure ? ['Secure'] : [])];
 }
 
 function serializarCookieArchivos(token, { maxAgeSegundos, secure }) {
@@ -67,4 +74,5 @@ module.exports = {
   leerCookie,
   segundosRestantes,
   cookieSegura,
+  sameSiteCookie,
 };

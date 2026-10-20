@@ -3,12 +3,12 @@ import { Wallet, Building2, Truck, AlertTriangle } from 'lucide-react';
 import { reporteCostos } from '../../api/reportes';
 import useReporte from '../../hooks/useReporte';
 import TarjetaIndicador from '../../components/reportes/TarjetaIndicador';
-import BarrasApiladas from '../../components/reportes/BarrasApiladas';
+import ColumnasApiladas from '../../components/reportes/ColumnasApiladas';
 import TablaReporte from '../../components/reportes/TablaReporte';
 import BotonExportar from '../../components/reportes/BotonExportar';
 import EstadoReporte from '../../components/reportes/EstadoReporte';
 import { formatearFecha, formatearMoneda, hoyISO } from '../../utils/mantenimiento';
-import { COLOR_TIPO_MANTENIMIENTO, TIPOS_MANTENIMIENTO, formatearPorcentaje, sumarPesos } from '../../utils/reportes';
+import { HEX_TIPO_MANTENIMIENTO, TIPOS_MANTENIMIENTO, formatearPorcentaje, sumarPesos } from '../../utils/reportes';
 
 const ANIOS_VISIBLES = 6;
 
@@ -107,15 +107,15 @@ export default function CostosReporte() {
             <Indicadores anual={datos.anual} />
             <section className="rounded-xl border border-slate-200 bg-white p-5">
               <h3 className="mb-4 text-sm font-semibold text-slate-700">Costo por trimestre</h3>
-              <BarrasApiladas
-                filas={datos.trimestres.map((t) => ({
+              <ColumnasApiladas
+                columnas={datos.trimestres.map((t) => ({
                   clave: t.etiqueta,
                   etiqueta: t.etiqueta,
                   total: t.total.costo,
                   segmentos: Object.fromEntries(TIPOS_MANTENIMIENTO.map(([tipo]) => [tipo, t.porTipo[tipo].costo])),
                 }))}
                 series={TIPOS_MANTENIMIENTO}
-                colores={COLOR_TIPO_MANTENIMIENTO}
+                colores={HEX_TIPO_MANTENIMIENTO}
                 formatear={formatearMoneda}
               />
             </section>
