@@ -27,6 +27,8 @@ const prisma = new PrismaClient();
 
 const CLAVE_ADMIN = 'THIadmin2026*';
 const CLAVE_TECNICO = 'THItecnico2026*';
+const CLAVE_ADMIN_DEMO = 'DemoAdmin2026*';
+const CLAVE_TECNICO_DEMO = 'DemoTecnico2026*';
 
 // La especialidad va como comentario: el modelo Usuario no tiene un campo
 // `cargo`. Si se quiere mostrar en la interfaz hace falta añadirlo al schema
@@ -44,6 +46,20 @@ const CUENTAS = [
     email: 'sefemoreno123@umariana.edu.co',
     rol: 'ADMINISTRADOR',
     clave: CLAVE_ADMIN,
+  },
+  // Cuentas ficticias para la demostración pública. No representan personas
+  // reales y permiten presentar ambos roles sin usar correos personales.
+  {
+    nombre: 'Laura Gómez',
+    email: 'admin.demo@thi.com.co',
+    rol: 'ADMINISTRADOR',
+    clave: CLAVE_ADMIN_DEMO,
+  },
+  {
+    nombre: 'Miguel Torres',
+    email: 'tecnico.demo@thi.com.co',
+    rol: 'TECNICO',
+    clave: CLAVE_TECNICO_DEMO,
   },
 
   // --- Personal de planta THI S.A.S. (ficticio, para la demostración) ---
