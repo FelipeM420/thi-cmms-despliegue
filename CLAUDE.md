@@ -21,7 +21,7 @@ The entire codebase — identifiers, function names, comments, commit-worthy str
 ### Backend (`cd backend`)
 ```bash
 npm install
-cp .env.example .env                         # set DATABASE_URL and JWT_SECRET (>= 32 chars, not the example, not a leaked one, or the server won't boot)
+cp .env.example .env                         # set DATABASE_URL, JWT_SECRET and PAYLOAD_ENCRYPTION_KEY (>= 32 chars, not the example, not a leaked one, distinct, or the server won't boot)
 npx prisma generate                          # or: npm run prisma:generate
 npx prisma migrate dev                       # apply all existing migrations
 npm run seed                                 # 2 test users + 8 equipos matching the Figma prototype (idempotent upserts)
@@ -36,6 +36,7 @@ npm run test:integracion                     # contra Postgres REAL desechable (
 ### Frontend (`cd frontend`, separate terminal)
 ```bash
 npm install
+cp .env.example .env.local                   # VITE_PAYLOAD_ENCRYPTION_KEY = el mismo valor de PAYLOAD_ENCRYPTION_KEY del backend (sin ella, `npm run build` se detiene)
 npm run dev                                  # http://localhost:5173 — Vite proxies /api and /uploads to :4000
 npm run build
 npm run preview
@@ -72,7 +73,12 @@ La especialidad de cada técnico es documental: `Usuario` no tiene campo `cargo`
 
 Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/*.controller.js` → `src/config/prisma.js` (singleton `PrismaClient`).
 
-- **Auth & Access Control** — `src/middleware/auth.js` exports `verificarToken` (validates JWT HS256 y **consulta la cuenta en la base en cada petición**: si no existe o está desactivada → 401; `req.usuario = { sub, nombre, rol, esAdministradorPrincipal, iat, exp }` con rol y principal leídos de la base, no del token, así que desactivar o cambiar de rol surte efecto al instante), `crearVerificarToken` (versión inyectable para pruebas) and `requiereRol('ADMINISTRADOR', ...)`.
+- **Auth & Access Control** — `src/middleware/auth.js` exports `verificarToken` (validates JWT HS256 y **consulta la cuenta en la base en cada petición**: si no existe o está desactivada → 401; `req.usuario = { sub, nombre, rol, esAdministradorPrincipal, iat, exp }` con rol y principal leídos de la base, no del token, así que desactivar o cambiar de rol surte efecto al instante; rechaza un token de renovación), `crearVerificarToken` (versión inyectable para pruebas) and `requiereRol('ADMINISTRADOR', ...)`.
+- **Sesión: acceso de 15 min + renovación (auditoría de seguridad H-03)** — `src/utils/tokensSesion.js`. El token de acceso dura **15 minutos fijos** (`JWT_EXPIRES_IN` ya no se lee). El login emite además un token de renovación de 7 días (`tipo: 'refresh'`, secreto `JWT_REFRESH_SECRET` o derivado de `JWT_SECRET` por HMAC, con la huella HMAC de la contraseña vigente: cambiarla invalida las renovaciones previas)
+  en la cookie HttpOnly `thi_refresh` (`Path=/api/auth/refresh`, `SameSite` según `COOKIE_SAME_SITE`, `Secure` según `cookieSegura()`) **y** en el cuerpo (`refreshToken`): Safari y el incógnito de Chrome bloquean cookies entre Vercel y Render. `POST /api/auth/refresh` (cookie o `{ refreshToken }`) consulta la cuenta (activa, misma contraseña), rota ambos tokens y renueva `thi_archivos`; si no, 401 `SESION_EXPIRADA` y borra la cookie. Limitador propio (100 / 15 min / IP). `logout` borra las dos cookies.
+- **Cifrado de payloads (auditoría H-01, H-02, H-04)** — `src/utils/cifradoPayload.js` (AES-256-GCM, `enc:v1:<iv>:<tag>:<datos>` en hex, IV aleatorio de 12 bytes, tag de 16 exigido) y `src/middleware/cifradoPayload.middleware.js` (global, tras `express.json({ limit: '200kb' })`):
+  descifra cuerpos `{ payload: "enc:v1:..." }` (alterado → 400; un cuerpo sin cifrar se acepta) y, si la petición trae `X-Cifrado-Payload: 1`, `res.json` responde `{ payload }` (errores ≥ 400, CSV, PDF y archivos van legibles). Llave: `PAYLOAD_ENCRYPTION_KEY` (SHA-256 del valor recortado), **obligatoria y distinta de los secretos JWT** porque el frontend la lleva en su bundle (no es confidencial frente a quien estudie el bundle: oculta los datos en DevTools, extensiones y logs de proxies).
+  Espejo en `frontend/src/utils/cifradoPayload.js` (Web Crypto); `test/paridad-cifrado.test.js` hace cumplir la compatibilidad.
 - **Gestión de cuentas (HU24)** — `src/controllers/usuarios.controller.js` + `src/utils/permisosCuentas.js` (reglas puras). **Administrador principal** (`Usuario.esAdministradorPrincipal`, lo fija solo la migración y la semilla; ninguna petición lo acepta): crea, edita, desactiva y elimina administradores y técnicos. **Administrador común**: solo técnicos; no toca a otros administradores ni al principal ni puede ascender a nadie. Nadie cambia su propio rol ni se desactiva/elimina (así el principal no se bloquea), y la cuenta del principal solo la modifica su titular. `GET /api/usuarios` devuelve `permisos` por cuenta (la interfaz solo ofrece lo permitido; el servidor vuelve a validar). `DELETE` borra la cuenta; si tiene actividad (FK RESTRICT) la deja **desactivada** y responde `{ eliminada: false }`. El correo se guarda y se busca en minúsculas.
 - **Validation** — every write body is parsed with a **Zod** schema in the controller; `.safeParse` failures return `400` with `error.issues[0].message`.
 - **File uploads (HU1, HU9, servicios externos)** — `src/middleware/subidaArchivos.js` (`crearSubida(campos)`): `multer` 2.x con límites (10 MB, 20 campos, 100 KB por campo de texto),
@@ -87,7 +93,8 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
 - **Security posture (ISO 25010)** — `helmet`, `express-rate-limit` (10 login attempts / 15 min / IP on `/api/auth/login`; además `src/middleware/limitadores.js`: 1000 escrituras / 15 min / IP
   **antes** de la bitácora, para que un bucle de peticiones no la llene, 2000 peticiones / 5 min / IP a `/uploads` y 120 consultas / 5 min / IP a `/api/reportes`), bcrypt password hashes, JWT solo HS256, y arranque que falla si
   `JWT_SECRET` falta, es corto (< 32), es de ejemplo, es predecible (fragmento repetido, secuencia o < 128 bits estimados) o coincide con la huella SHA-256 de uno que estuvo publicado,
-  aunque venga entre comillas o con espacios (`src/config/secretoJwt.js`).
+  aunque venga entre comillas o con espacios (`src/config/secretoJwt.js`, `validarSecretosDelEntorno`: las mismas reglas para `JWT_REFRESH_SECRET` si existe y para `PAYLOAD_ENCRYPTION_KEY`, que además no puede repetir un secreto JWT).
+  `app.set('trust proxy', TRUST_PROXY ?? 1)`: detrás de Render cada cliente tiene su propio límite por IP. `helmet` con HSTS de 1 año (`includeSubDomains`, `preload`) y su CSP por defecto.
   `seed.js` se niega a correr con `NODE_ENV=production` salvo `PERMITIR_SEED_EN_PRODUCCION=si`.
 - **Frequency generation engine (HU6)** — `src/utils/frecuencias.js` calculates recurrence occurrences (DIARIA, SEMANAL, QUINCENAL, MENSUAL, etc.) starting from `fechaInicio` with an idempotent cutoff (`proximaGeneracionHasta`). Aritmética en UTC y cada ocurrencia se ancla a `fechaInicio` (un plan mensual iniciado el día 31 cae el 28-feb y vuelve al 31-mar; antes derivaba al día 3). `calcularGeneracion` devuelve además `truncado` y `generadoHasta`: si se llega a `MAX_OCURRENCIAS` (500), el plan queda cubierto solo hasta la última fecha creada y hay que volver a generar (antes se marcaba todo el horizonte como generado y las fechas cortadas se perdían).
 - **Cost engine (HU12)** — `src/utils/costos.js`. Su espejo en cliente vive en `frontend/src/utils/mantenimiento.js`; si cambia uno, cambia el otro. `backend/test/paridad-costos.test.js` lo hace cumplir (cada línea de insumo se redondea a centavos antes de sumar).
@@ -151,8 +158,8 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
 
 React 18 + Vite 6 + React Router **v7** + Tailwind + axios. No TypeScript, no external state library.
 
-- **Auth state** — `src/context/AuthContext.jsx` holds `usuario` y mirrors it + JWT into `localStorage` (`thi_token`, `thi_usuario`).
-- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`, `src/api/ordenesTrabajo.js`, `src/api/alertas.js`, `src/api/serviciosExternos.js`, `src/api/consentimiento.js`, `src/api/reportes.js` (incluye la descarga CSV como blob).
+- **Auth state** — `src/context/AuthContext.jsx` holds `usuario` y mirrors it + JWT into `localStorage` (`thi_token`, `thi_refresh`, `thi_usuario`) con `guardarSesion` / `limpiarSesionLocal` de `api/client.js`.
+- **API layer** — `src/api/client.js` is the shared axios instance (`baseURL: '/api'`). Cifra los cuerpos JSON (no los `FormData`) y pide/descifra las respuestas JSON con `VITE_PAYLOAD_ENCRYPTION_KEY` (los blobs no se tocan); ante un 401 hace **una sola** renovación (`renovarSesion`, las demás peticiones la esperan), reintenta una vez y, si no puede renovar, limpia la sesión y va a `/login`. `vite.config.js` no compila sin la llave. Modular API modules: `src/api/auth.js`, `src/api/equipos.js`, `src/api/mantenimiento.js`, `src/api/ejecuciones.js`, `src/api/ordenesTrabajo.js`, `src/api/alertas.js`, `src/api/serviciosExternos.js`, `src/api/consentimiento.js`, `src/api/reportes.js` (incluye la descarga CSV como blob).
 - **Alertas context** — `src/context/AlertasContext.jsx` mantiene el contador de alertas pendientes (refresco cada 60 s) que consume el badge de la campana en `TopBar.jsx`. Las vistas llaman a `refrescar()` tras mutar alertas.
 - **Archivos protegidos** — `src/api/archivos.js` (`descargarArchivo`: GET con Bearer y `baseURL: ''`, devuelve un Blob), `ImagenProtegida.jsx` (imagen desde blob) y `EnlaceArchivo.jsx` (abre un manual/informe/evidencia en otra pestaña). Toda foto, manual, informe o evidencia se muestra con estos dos; nunca con `<img src>` ni `<a href>` directos.
 - **Usuarios (HU24)** — `/usuarios` (`pages/UsuariosView.jsx`, solo administrador): lista con búsqueda, crear/editar en modal, desactivar/reactivar y eliminar; las acciones salen de `permisos` por cuenta. `AuthContext` sincroniza el perfil (`/auth/me`) al abrir la app.
@@ -199,12 +206,12 @@ Periodo: `?desde=&hasta=` (AAAA-MM-DD, días de Colombia, máximo 3660 días); s
 - **Motor de alertas:** `server.js` lo ejecuta al arrancar y cada 12 h con un temporizador dentro del proceso (además del botón de la UI y `POST /api/alertas/generar`).
   No hay cron: si el servidor está caído en el momento del umbral, la alerta sale en el siguiente arranque, y con varias instancias correría en cada una (la unicidad de `Alerta` evita duplicados).
 - Pendiente de validar con el Product Owner (HU1): *"PDF en Word del manual"* (hoy solo se acepta PDF) y el campo *"ítem"* de la tarjeta maestra, que no existe en el modelo.
-- **Seguridad pendiente:** la bitácora de auditoría es un archivo plano (`src/logs/auditoria.log`) y no una tabla consultable; cambiar la contraseña de una cuenta **no revoca** los tokens ya emitidos (siguen valiendo hasta vencer, 8 h); desactivarla sí (se consulta en cada petición);
-  el token de sesión vive en `localStorage` (riesgo XSS); el motor de OT/alertas corre dentro del proceso (con varias instancias correría en cada una; la unicidad de la base evita duplicados).
+- **Seguridad pendiente:** la bitácora de auditoría es un archivo plano (`src/logs/auditoria.log`) y no una tabla consultable; cambiar la contraseña de una cuenta **no revoca** el token de acceso ya emitido (vale hasta vencer, ≤ 15 min) pero sí impide renovarlo; desactivarla corta todo al instante (se consulta en cada petición);
+  los tokens de acceso y de renovación viven en `localStorage` (riesgo XSS: la copia de renovación existe porque las cookies entre Vercel y Render no son fiables; un proxy `/api` en Vercel —mismo sitio— permitiría dejar solo la cookie HttpOnly); la renovación es sin estado (rotar no invalida el token anterior hasta que vence); el motor de OT/alertas corre dentro del proceso (con varias instancias correría en cada una; la unicidad de la base evita duplicados).
   Resuelto en el refuerzo: `/uploads` ya exige sesión, la subida valida el contenido real y el secreto JWT se valida al arrancar.
 - **Pendiente de las revisiones del refuerzo (sin CRITICAL ni HIGH abiertos):** la cookie `thi_archivos` lleva el mismo JWT de la API (mejor un token propio con `aud: archivos`)
   y solo es `Secure` con `NODE_ENV=production`; las fotos conservan sus metadatos EXIF (GPS, dispositivo); editar un servicio externo no guarda el valor anterior (dato contable);
-  el informe PDF se sirve `inline`; sin `app.set('trust proxy')` todos los usuarios detrás de un proxy comparten el límite por IP (también el del login);
+  el informe PDF se sirve `inline`;
   el disparador de consentimientos no bloquea `TRUNCATE` ni al dueño de la base (usar un rol de aplicación sin esos permisos); el CHECK de textos de `servicios_externos` solo recorta espacios.
 - **Base de datos:** paginar `GET /api/ordenes-trabajo` (el motor hará crecer la tabla). El índice de `insumos_utilizados.equipoInsumoId` ya se creó en Sprint 5.
   Para contar "OT emitidas por el sistema" usar `emitidaPorId IS NULL`, **no** `origen = AUTOMATICO`: una OT que el administrador materializa desde el cronograma también lleva `AUTOMATICO`.
