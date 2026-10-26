@@ -41,9 +41,20 @@ if (!validacionSecreto.valido) {
 
 const app = express();
 
+// CWE-799 — Render (y cualquier balanceador) reenvía la petición: sin esto, req.ip
+// es la IP del proxy y todos los usuarios comparten el límite de intentos de login
+// y de escrituras. Con 1, Express toma la IP del cliente de X-Forwarded-For y confía
+// en un solo salto. TRUST_PROXY permite ajustarlo (0 si la API se expone sin proxy).
+const saltosProxy = Number.parseInt(process.env.TRUST_PROXY ?? '1', 10);
+app.set('trust proxy', Number.isInteger(saltosProxy) && saltosProxy >= 0 ? saltosProxy : 1);
+
 // ISO 25010 (Seguridad) — cabeceras HTTP seguras por defecto (protege contra
-// clickjacking, sniffing de MIME type, y expone menos huella del stack).
-app.use(helmet());
+// clickjacking, sniffing de MIME type, y expone menos huella del stack). HSTS de
+// un año con subdominios: el navegador no vuelve a intentar la API por HTTP.
+// La CSP por defecto de helmet se conserva: la API también sirve /uploads.
+app.use(helmet({
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+}));
 
 // En producción el frontend (Vercel) y la API (Render) usan dominios distintos.
 // FRONTEND_URL admite una lista separada por comas para permitir, por ejemplo,
