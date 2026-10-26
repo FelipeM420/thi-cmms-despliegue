@@ -277,7 +277,9 @@ test('una cuenta con actividad no se borra: queda desactivada, avisa de lo que t
   const respuesta = await api('DELETE', `/usuarios/${tecnico.id}`, adminComun);
   assert.equal(respuesta.estado, 200);
   assert.equal(respuesta.cuerpo.eliminada, false);
-  assert.equal(respuesta.cuerpo.usuario.activo, false);
+  assert.equal(respuesta.cuerpo.desactivada, true);
+  // Minimización de datos: la confirmación no devuelve la cuenta.
+  assert.equal(respuesta.cuerpo.usuario, undefined);
   assert.match(respuesta.cuerpo.advertencia, /1 mantenimiento/);
   assert.equal((await prisma.usuario.findUnique({ where: { id: tecnico.id } })).activo, false);
 

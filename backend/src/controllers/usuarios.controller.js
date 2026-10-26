@@ -140,15 +140,17 @@ const eliminarUsuario = asyncHandler(async (req, res) => {
 
   try {
     await prisma.usuario.delete({ where: { id: objetivo.id } });
-    return res.json({ eliminada: true, mensaje: `La cuenta de ${objetivo.nombre} se eliminó.` });
+    return res.json({ eliminada: true, mensaje: `La cuenta de ${objetivo.nombre} se eliminó.` }); // solo la confirmación
   } catch (error) {
     if (!esViolacionDeClaveForanea(error)) throw error;
   }
 
-  const usuario = await prisma.usuario.update({ where: { id: objetivo.id }, data: { activo: false }, select: camposPublicos });
+  // Minimización de datos (Ley 1581): la confirmación no devuelve la cuenta. La interfaz
+  // vuelve a pedir la lista, así que no necesita el objeto actualizado.
+  const usuario = await prisma.usuario.update({ where: { id: objetivo.id }, data: { activo: false }, select: { id: true, rol: true } });
   const respuesta = {
     eliminada: false,
-    usuario: { ...usuario, permisos: permisosSobre(actor, usuario) },
+    desactivada: true,
     mensaje: `La cuenta de ${objetivo.nombre} tiene actividad registrada, así que no se puede borrar sin perder la trazabilidad: quedó desactivada y ya no puede iniciar sesión.`,
   };
   const advertencia = objetivo.activo ? await advertenciaDeAsignaciones(usuario) : null;
