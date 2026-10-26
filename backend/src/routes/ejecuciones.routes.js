@@ -15,19 +15,21 @@ const prisma = require('../config/prisma');
 const { verificarToken, requiereRol } = require('../middleware/auth');
 const { crearSubida } = require('../middleware/subidaArchivos');
 const { respaldoEnBase } = require('../utils/respaldoArchivos');
+const { respaldarEvidenciasEnDrive } = require('../services/googleDriveRespaldo.service');
 const { crearAutorizadorEjecucion } = require('../middleware/autorizarEjecucion');
 const { crearRequiereConsentimiento } = require('../middleware/consentimiento');
 
 const router = express.Router();
 
 // HU9 — evidencia fotográfica antes / después. Mismo patrón que equipos.routes:
-// almacenamiento local con copia en la base, solo PNG o JPG, 10 MB.
+// almacenamiento local con copia en la base, solo PNG o JPG, 10 MB. Fase 3: una
+// vez guardada la ejecución, copia en segundo plano a Google Drive (Antes / Después).
 const subirEvidencias = crearSubida(
   {
     evidenciaAntes: { tipo: 'imagen', etiqueta: 'La evidencia fotográfica' },
     evidenciaDespues: { tipo: 'imagen', etiqueta: 'La evidencia fotográfica' },
   },
-  { respaldo: respaldoEnBase }
+  { respaldo: respaldoEnBase, copiaExterna: respaldarEvidenciasEnDrive }
 );
 
 // Se autoriza ANTES de leer la subida: un usuario sin acceso a la ejecución no

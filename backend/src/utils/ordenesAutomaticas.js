@@ -15,10 +15,13 @@
 // - Fase 1 (Google): cada OT emitida se avisa por correo con su PDF si su
 //   mantenimiento tiene alertas abiertas. El aviso va en segundo plano: la
 //   pasada no lo espera y un fallo del correo no la detiene.
+// - Fase 3 (Google): cada OT emitida se copia en PDF a Google Drive, también en
+//   segundo plano y sin detener la pasada.
 
 const { emitirConConsecutivo, CODIGO_CAMBIO_DE_ESTADO } = require('./ordenesTrabajo');
 const { claveDiaColombia, MS_POR_DIA } = require('./fechas');
 const { notificarOrdenAutomatica } = require('../services/correoAlertas.service');
+const { respaldarOrdenTrabajoEnDrive } = require('../services/googleDriveRespaldo.service');
 
 const ESTADOS_QUE_ESPERAN_EJECUCION = ['PROGRAMADO', 'ASIGNADO'];
 const LIMITE_POR_PASADA = 500;
@@ -64,12 +67,12 @@ function datosOrdenAutomatica(mantenimiento) {
   };
 }
 
-/** Dispara el aviso de una OT sin esperarlo; ni un error síncrono ni uno asíncrono llegan a la pasada. */
-function avisarEmision(notificarOrden, orden, registrarError) {
+/** Dispara un aviso de la OT sin esperarlo; ni un error síncrono ni uno asíncrono llegan a la pasada. */
+function avisarEmision(aviso, orden, registrarError, accion = 'notificar') {
   try {
-    Promise.resolve(notificarOrden(orden)).catch((error) => registrarError(`No se pudo notificar la OT ${orden.consecutivo}`, error));
+    Promise.resolve(aviso(orden)).catch((error) => registrarError(`No se pudo ${accion} la OT ${orden.consecutivo}`, error));
   } catch (error) {
-    registrarError(`No se pudo notificar la OT ${orden.consecutivo}`, error);
+    registrarError(`No se pudo ${accion} la OT ${orden.consecutivo}`, error);
   }
 }
 
@@ -81,6 +84,7 @@ function avisarEmision(notificarOrden, orden, registrarError) {
  * @param {Function} [opciones.registrarEvento] recibe el resumen si se generó o falló algo (bitácora de auditoría)
  * @param {Function} [opciones.registrarError] recibe (mensaje, error) por cada mantenimiento que falla
  * @param {Function} [opciones.notificarOrden] recibe cada OT emitida (por defecto, el correo de la Fase 1); no se espera
+ * @param {Function} [opciones.respaldarOrden] recibe cada OT emitida (por defecto, su PDF a Google Drive, Fase 3); no se espera
  * @returns {Promise<object>} { generadas, yaTenian, fallidas, omitidas, consecutivos, revisados, semana }
  */
 async function generarOrdenesAutomaticas(
@@ -90,6 +94,7 @@ async function generarOrdenesAutomaticas(
     registrarEvento = () => {},
     registrarError = () => {},
     notificarOrden = (orden) => notificarOrdenAutomatica(prisma, orden),
+    respaldarOrden = (orden) => respaldarOrdenTrabajoEnDrive(prisma, { id: orden.id }, { sufijo: 'emitida' }),
   } = {}
 ) {
   const semana = ventanaSemana(ahora);
@@ -127,6 +132,7 @@ async function generarOrdenesAutomaticas(
       resultado.generadas += 1;
       resultado.consecutivos.push(orden.consecutivo);
       avisarEmision(notificarOrden, orden, registrarError);
+      avisarEmision(respaldarOrden, orden, registrarError, 'respaldar en Drive');
     } catch (error) {
       if (error.codigo === CODIGO_CAMBIO_DE_ESTADO) {
         // Lo cancelaron o lo tercerizaron mientras la pasada corría: ya no lleva OT.

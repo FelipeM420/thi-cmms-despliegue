@@ -11,6 +11,7 @@ const { textoOpc, fechaOpc, enumOpc } = require('../utils/consultas');
 const { generarPdfOrdenTrabajo } = require('../utils/pdfOrdenTrabajo');
 const { generarOrdenesAutomaticas } = require('../utils/ordenesAutomaticas');
 const { registrarEventoSistema } = require('../middleware/auditoria');
+const { respaldarOrdenTrabajoEnDrive } = require('../services/googleDriveRespaldo.service');
 const { asyncHandler } = require('../middleware/manejoErrores');
 const {
   emitirConConsecutivo,
@@ -250,6 +251,8 @@ async function crear(req, res) {
       { ...datos, emitidaPorId: req.usuario.sub },
       { include, mantenimientoDebe: { estado: { not: 'CANCELADO' } } }
     );
+    // Fase 3 — el PDF de la OT recién emitida a Google Drive, en segundo plano (sin await).
+    respaldarOrdenTrabajoEnDrive(prisma, { id: orden.id }, { sufijo: 'emitida' });
     return res.status(201).json(orden);
   } catch (error) {
     // El mantenimiento ya tiene OT (otra emisión ganó la carrera): conflicto, no fallo interno.

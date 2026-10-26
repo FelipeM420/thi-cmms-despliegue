@@ -113,17 +113,37 @@ function respaldarArchivos(respaldo) {
   };
 }
 
+// Fase 3 (Google Drive): una copia adicional fuera del servidor. Solo cuando la
+// petición ya respondió 2xx (el archivo quedó referenciado) y sin esperarla: la
+// respuesta nunca depende de Drive.
+function copiarFuera(copiaExterna) {
+  return (req, res, next) => {
+    const archivos = Object.values(req.files || {}).flat();
+    if (archivos.length === 0) return next();
+    res.once('finish', () => {
+      if (res.statusCode < 200 || res.statusCode >= 300) return;
+      try {
+        Promise.resolve(copiaExterna(archivos)).catch((error) => console.error('No se pudo copiar un archivo fuera del servidor:', error.message));
+      } catch (error) {
+        console.error('No se pudo copiar un archivo fuera del servidor:', error.message);
+      }
+    });
+    return next();
+  };
+}
+
 /**
  * Crea los middlewares de subida de una ruta. Se usa con spread:
  *   router.post('/', ...crearSubida({ foto: { tipo: 'imagen', etiqueta: 'El registro fotográfico' } }), controlador)
  *
  * @param {Record<string, { tipo: 'imagen'|'pdf', etiqueta: string }>} campos campos admitidos (uno por nombre, máximo un archivo cada uno)
- * @param {{ directorio?: string, respaldo?: { guardar: Function, eliminar: Function } }} [opciones]
+ * @param {{ directorio?: string, respaldo?: { guardar: Function, eliminar: Function }, copiaExterna?: Function }} [opciones]
  *   directorio: carpeta destino (por defecto la de config/uploads).
  *   respaldo: si se pasa, cada archivo aceptado se copia también a la base de datos (utils/respaldoArchivos.js).
- * @returns {Function[]} [multer envuelto, verificación de contenido, y el respaldo si se pidió]
+ *   copiaExterna: recibe los archivos de una petición que respondió 2xx, sin esperarla (p. ej. Google Drive).
+ * @returns {Function[]} [multer envuelto, verificación de contenido, y el respaldo y la copia externa si se pidieron]
  */
-function crearSubida(campos, { directorio = directorioUploads(), respaldo = null } = {}) {
+function crearSubida(campos, { directorio = directorioUploads(), respaldo = null, copiaExterna = null } = {}) {
   fs.mkdirSync(directorio, { recursive: true });
 
   const storage = multer.diskStorage({
@@ -154,6 +174,7 @@ function crearSubida(campos, { directorio = directorioUploads(), respaldo = null
 
   const middlewares = [protegerSubida(subir), verificarContenido(campos)];
   if (respaldo) middlewares.push(respaldarArchivos(respaldo));
+  if (copiaExterna) middlewares.push(copiarFuera(copiaExterna));
   return middlewares;
 }
 

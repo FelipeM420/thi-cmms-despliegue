@@ -18,6 +18,7 @@ const { puedeOperarMantenimiento } = require('../utils/permisos');
 const { operacionesOrden } = require('../utils/ordenesTrabajo');
 const { resolverFirma, puedeCambiarFirma } = require('../utils/firmaConformidad');
 const { notificarCierreDeEjecucion } = require('../services/correoAlertas.service');
+const { respaldarOrdenTrabajoEnDrive, respaldarFirmaEnDrive } = require('../services/googleDriveRespaldo.service');
 const {
   MAX_MINUTOS,
   MAX_TECNICOS,
@@ -408,6 +409,10 @@ async function actualizar(req, res) {
     }
 
     await prisma.registroEjecucion.update({ where: { id: ejecucion.id }, data: datos });
+    // Fase 3 — constancia de la firma recién puesta a Google Drive, sin await.
+    if (typeof firma === 'string') {
+      respaldarFirmaEnDrive({ ejecucionId: ejecucion.id, firma, equipo: ejecucion.mantenimientoProgramado.equipo });
+    }
     return devolverEjecucion(res, ejecucion.id);
   } catch (error) {
     console.error('Error al actualizar el registro de ejecución:', error);
@@ -677,6 +682,8 @@ async function finalizar(req, res) {
       mantenimientoProgramadoId: ejecucion.mantenimientoProgramadoId,
       ejecucion: { ...ejecucion, costoTotal, resultado, motivoNoEjecucion },
     });
+    // Fase 3 — la OT ya cerrada, en PDF, a Google Drive (también sin await).
+    respaldarOrdenTrabajoEnDrive(prisma, { mantenimientoProgramadoId: ejecucion.mantenimientoProgramadoId });
     return devolverEjecucion(res, ejecucion.id);
   } catch (error) {
     console.error('Error al finalizar la ejecución:', error);
