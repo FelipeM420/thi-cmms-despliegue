@@ -226,4 +226,19 @@ function generarPdfOrdenTrabajo(orden) {
   return doc;
 }
 
-module.exports = { generarPdfOrdenTrabajo };
+/**
+ * El mismo PDF reunido en memoria, para adjuntarlo a un correo (Fase 1).
+ * @param {object} orden OT con equipo, tarea, técnico y ejecución incluidos.
+ * @returns {Promise<Buffer>}
+ */
+function generarPdfOrdenTrabajoBuffer(orden) {
+  return new Promise((resolve, reject) => {
+    const doc = generarPdfOrdenTrabajo(orden);
+    const partes = [];
+    doc.on('data', (parte) => partes.push(parte));
+    doc.on('end', () => resolve(Buffer.concat(partes)));
+    doc.on('error', reject);
+  });
+}
+
+module.exports = { generarPdfOrdenTrabajo, generarPdfOrdenTrabajoBuffer };

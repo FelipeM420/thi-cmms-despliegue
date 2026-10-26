@@ -107,6 +107,10 @@ Request flow: `src/server.js` → `src/routes/*.routes.js` → `src/controllers/
   mantenimiento PROGRAMADO/ASIGNADO de la **semana en curso** (lunes–domingo, hora de Colombia) que no tenga OT; `emitidaPorId` nulo = la emitió el sistema. Idempotente; la emisión confirma **dentro de la transacción** que el mantenimiento sigue
   PROGRAMADO/ASIGNADO (un `updateMany` que bloquea su fila), así que una cancelación simultánea no deja una OT abierta (`emitirConConsecutivo` con `mantenimientoDebe`). Se ejecuta al arrancar, cada 12 h, con
   `POST /api/ordenes-trabajo/generar` (admin) y se apaga con `GENERAR_OT_AUTOMATICAS=false`. Una OT ligada al cronograma sigue su mantenimiento (iniciar → EN_PROCESO, finalizar → CERRADA; NO_EJECUTADO la cierra con el motivo).
+- **Correo con la OT en PDF (Fase 1, ecosistema Google)** — `src/config/correo.js` (variables `CORREO_*` y `SMTP_*`, ver `.env.example`; sin `CORREO_NOTIFICACIONES_HABILITADO=true` + credenciales + destinatarios, transporte **simulado**)
+  y `src/services/correoAlertas.service.js` (plantilla HTML/texto, `notificarOrdenTrabajoConPdf`, `alertasDelCierre`). Se dispara **sin await** al finalizar una ejecución (`notificarCierreDeEjecucion`, tras confirmar la transacción)
+  y desde el motor de OT (`notificarOrden` de `generarOrdenesAutomaticas`; solo si el mantenimiento tiene alertas abiertas). Ninguna función rechaza: un SMTP caído queda en el log. Los correos salen en serie (una cola en memoria).
+  `INCLUDE_ORDEN` / `INCLUDE_ORDEN_PDF` viven en `utils/ordenesTrabajo.js` (los usan el controlador de OT y el correo).
 - **Fechas** — `src/utils/fechas.js`: día, semana y minuto en hora de Colombia (`America/Bogota`); todo lo demás sigue guardándose a medianoche UTC.
 - **Consentimiento (Ley 1581)** — `src/config/politicaDatos.js` (texto y `VERSION_POLITICA`; **borrador pendiente de validación jurídica**), `middleware/consentimiento.js`, `controllers/consentimiento.controller.js`,
   `GET/POST /api/consentimiento`. Iniciar, editar y finalizar una ejecución exigen haber aceptado la versión vigente (403 con `codigo: CONSENTIMIENTO_REQUERIDO`). La tabla es solo de altas (disparador SQL).

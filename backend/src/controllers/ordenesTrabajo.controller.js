@@ -16,6 +16,8 @@ const {
   emitirConConsecutivo,
   camposBloqueadosDeOrdenVinculada,
   puedeCerrarManualmente,
+  INCLUDE_ORDEN,
+  INCLUDE_ORDEN_PDF,
 } = require('../utils/ordenesTrabajo');
 
 // Transiciones válidas del ciclo de vida (HU14). Los estados terminales no
@@ -68,38 +70,9 @@ const filtrosSchema = z.object({
   hasta: fechaOpc('hasta'),
 });
 
-const include = {
-  equipo: {
-    select: {
-      id: true, nombre: true, referencia: true, zona: true,
-      numeroSerie: true, marca: true, tipoMantenimiento: true,
-    },
-  },
-  tarea: { select: { id: true, nombre: true, descripcion: true, recursos: true, duracionEstimadaMin: true } },
-  tecnicoAsignado: { select: { id: true, nombre: true, email: true } },
-  emitidaPor: { select: { id: true, nombre: true } },
-  mantenimientoProgramado: { select: { id: true, fechaProgramada: true, estado: true } },
-};
-
-// Para el PDF hace falta además el detalle de insumos de la ejecución.
-const includePdf = {
-  ...include,
-  mantenimientoProgramado: {
-    select: {
-      id: true,
-      fechaProgramada: true,
-      estado: true,
-      registroEjecucion: {
-        select: {
-          insumos: {
-            orderBy: { creadoEn: 'asc' },
-            select: { descripcion: true, cantidad: true, unidad: true, costoUnitario: true, costoLinea: true },
-          },
-        },
-      },
-    },
-  },
-};
+// El PDF (y el correo que lo adjunta) necesita además los insumos de la ejecución.
+const include = INCLUDE_ORDEN;
+const includePdf = INCLUDE_ORDEN_PDF;
 
 // El administrador ve todas; el técnico solo las que tiene asignadas.
 function puedeVer(usuario, orden) {

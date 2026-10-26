@@ -17,6 +17,7 @@ const { calcularMinutosTrabajados, calcularCostoLinea, calcularCostoEjecucion } 
 const { puedeOperarMantenimiento } = require('../utils/permisos');
 const { operacionesOrden } = require('../utils/ordenesTrabajo');
 const { resolverFirma, puedeCambiarFirma } = require('../utils/firmaConformidad');
+const { notificarCierreDeEjecucion } = require('../services/correoAlertas.service');
 const {
   MAX_MINUTOS,
   MAX_TECNICOS,
@@ -670,6 +671,12 @@ async function finalizar(req, res) {
     }
 
     await prisma.$transaction(operaciones);
+    // Fase 1 — correo con la OT en PDF, en segundo plano (sin await): nunca demora
+    // esta respuesta ni afecta la transacción ya confirmada.
+    notificarCierreDeEjecucion(prisma, {
+      mantenimientoProgramadoId: ejecucion.mantenimientoProgramadoId,
+      ejecucion: { ...ejecucion, costoTotal, resultado, motivoNoEjecucion },
+    });
     return devolverEjecucion(res, ejecucion.id);
   } catch (error) {
     console.error('Error al finalizar la ejecución:', error);
