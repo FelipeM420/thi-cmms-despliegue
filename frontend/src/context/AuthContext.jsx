@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { login as loginApi, cerrarSesion, obtenerPerfil } from '../api/auth';
+import { guardarSesion, limpiarSesionLocal } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -9,13 +10,13 @@ export function AuthProvider({ children }) {
     return guardado ? JSON.parse(guardado) : null;
   });
 
-  // HU24 — al iniciar sesión se guarda el token y el usuario (con su rol)
-  // tanto en memoria como en localStorage, para que una recarga de página
-  // no obligue a autenticarse de nuevo.
+  // HU24 — al iniciar sesión se guarda el token de acceso (15 min), el de
+  // renovación y el usuario (con su rol) tanto en memoria como en localStorage,
+  // para que una recarga de página no obligue a autenticarse de nuevo.
   const login = useCallback(async (email, password) => {
-    const { token, usuario: datosUsuario } = await loginApi(email, password);
-    localStorage.setItem('thi_token', token);
-    localStorage.setItem('thi_usuario', JSON.stringify(datosUsuario));
+    const sesion = await loginApi(email, password);
+    const datosUsuario = sesion.usuario;
+    guardarSesion(sesion);
     setUsuario(datosUsuario);
     return datosUsuario;
   }, []);
@@ -38,11 +39,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
-    // Pide al servidor borrar la cookie de archivos; la sesión local se cierra
-    // igual aunque esa llamada falle (sin red, servidor caído).
+    // Pide al servidor borrar las cookies de archivos y de renovación; la sesión
+    // local se cierra igual aunque esa llamada falle (sin red, servidor caído).
     cerrarSesion().catch(() => {});
-    localStorage.removeItem('thi_token');
-    localStorage.removeItem('thi_usuario');
+    limpiarSesionLocal();
     setUsuario(null);
   }, []);
 

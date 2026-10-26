@@ -25,12 +25,14 @@ const { directorioUploads } = require('./config/uploads');
 const prisma = require('./config/prisma');
 const { generarAlertas } = require('./utils/alertas');
 const { generarOrdenesAutomaticas } = require('./utils/ordenesAutomaticas');
-const { validarSecretoJwt } = require('./config/secretoJwt');
+const { validarSecretosDelEntorno } = require('./config/secretoJwt');
+const { crearCifradoPayload } = require('./middleware/cifradoPayload.middleware');
 
-// ISO 25010 (Seguridad) — fail-fast: si falta un secreto de firma robusto, o es
-// uno de ejemplo o uno que estuvo publicado en el repositorio, el servidor ni
+// ISO 25010 (Seguridad) — fail-fast: si falta un secreto de firma robusto o la
+// llave de cifrado de payloads, o alguno es de ejemplo, estuvo publicado en el
+// repositorio o la llave de cifrado repite un secreto JWT, el servidor ni
 // siquiera arranca en vez de correr con una llave conocida.
-const validacionSecreto = validarSecretoJwt(process.env.JWT_SECRET);
+const validacionSecreto = validarSecretosDelEntorno(process.env);
 if (!validacionSecreto.valido) {
   console.error(`${validacionSecreto.motivo} Revisa tu archivo .env.`);
   console.error("Genera uno con: node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\"");
@@ -39,9 +41,20 @@ if (!validacionSecreto.valido) {
 
 const app = express();
 
+// CWE-799 — Render (y cualquier balanceador) reenvía la petición: sin esto, req.ip
+// es la IP del proxy y todos los usuarios comparten el límite de intentos de login
+// y de escrituras. Con 1, Express toma la IP del cliente de X-Forwarded-For y confía
+// en un solo salto. TRUST_PROXY permite ajustarlo (0 si la API se expone sin proxy).
+const saltosProxy = Number.parseInt(process.env.TRUST_PROXY ?? '1', 10);
+app.set('trust proxy', Number.isInteger(saltosProxy) && saltosProxy >= 0 ? saltosProxy : 1);
+
 // ISO 25010 (Seguridad) — cabeceras HTTP seguras por defecto (protege contra
-// clickjacking, sniffing de MIME type, y expone menos huella del stack).
-app.use(helmet());
+// clickjacking, sniffing de MIME type, y expone menos huella del stack). HSTS de
+// un año con subdominios: el navegador no vuelve a intentar la API por HTTP.
+// La CSP por defecto de helmet se conserva: la API también sirve /uploads.
+app.use(helmet({
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+}));
 
 // En producción el frontend (Vercel) y la API (Render) usan dominios distintos.
 // FRONTEND_URL admite una lista separada por comas para permitir, por ejemplo,
@@ -59,7 +72,13 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+// El cuerpo cifrado ocupa algo más del doble que el JSON original (hexadecimal):
+// 200 KB mantiene el tope efectivo de ~100 KB que había sin cifrado.
+app.use(express.json({ limit: '200kb' }));
+
+// OWASP A02:2021 / Ley 1581 — descifra los cuerpos { payload: "enc:v1:..." } y
+// cifra las respuestas JSON cuando el cliente lo pide (X-Cifrado-Payload: 1).
+app.use(crearCifradoPayload());
 
 // ISO 25010 (Seguridad) — tope de escrituras por IP ANTES de la bitácora: un
 // bucle de peticiones recibe 429 y no llena el disco con líneas de auditoría.
@@ -76,6 +95,16 @@ const limitadorLogin = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { error: 'Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// La renovación del token de acceso (cada 15 min por pestaña) tiene su propio
+// contador: compartir el del login agotaría los intentos de quien solo renueva.
+const limitadorRenovacion = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Demasiadas renovaciones de sesión. Intenta de nuevo en unos minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -100,6 +129,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth/login', limitadorLogin);
+app.use('/api/auth/refresh', limitadorRenovacion);
 app.use('/api/auth', authRoutes);
 app.use('/api/equipos', equiposRoutes);
 

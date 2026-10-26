@@ -19,7 +19,7 @@ export async function actualizarUsuario(id, datos) {
 }
 
 // Elimina la cuenta; si tiene actividad registrada queda desactivada.
-// Responde { eliminada, mensaje, usuario?, advertencia? }.
+// Responde solo la confirmación { eliminada, desactivada?, mensaje, advertencia? }.
 export async function eliminarUsuario(id) {
   const { data } = await client.delete(`/usuarios/${id}`);
   return data;

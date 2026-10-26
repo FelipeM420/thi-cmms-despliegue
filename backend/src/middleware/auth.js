@@ -12,7 +12,7 @@ const jwt = require('jsonwebtoken');
  * El token solo acredita QUIÉN es la persona: su cuenta se consulta en cada
  * petición, y de ahí salen el rol y la condición de administrador principal.
  * Así, desactivar, eliminar o cambiar de rol a una cuenta surte efecto de
- * inmediato y no cuando venza el JWT (8 h). Una consulta por petición es un
+ * inmediato y no cuando venza el JWT (15 min). Una consulta por petición es un
  * costo aceptable a esta escala; el servicio de /uploads ya hacía lo mismo.
  *
  * @param {object} opciones
@@ -35,6 +35,11 @@ function crearVerificarToken({ buscarUsuario, secreto = () => process.env.JWT_SE
       // elija otro.
       payload = jwt.verify(token, secreto(), { algorithms: ['HS256'] });
     } catch (error) {
+      return res.status(401).json({ error: 'Token inválido o expirado.' });
+    }
+    // Un token de renovación (utils/tokensSesion.js) se firma con otro secreto, pero
+    // aunque alguien configurara el mismo, nunca sirve como token de acceso.
+    if (payload.tipo === 'refresh') {
       return res.status(401).json({ error: 'Token inválido o expirado.' });
     }
 

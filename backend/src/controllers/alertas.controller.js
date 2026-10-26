@@ -7,7 +7,7 @@ const { z } = require('zod');
 const prisma = require('../config/prisma');
 const { TIPOS_ALERTA, ESTADOS_ALERTA } = require('../utils/enums');
 const { textoOpc, fechaOpc, enumOpc } = require('../utils/consultas');
-const { generarAlertas } = require('../utils/alertas');
+const { generarAlertas, contarPorTipo } = require('../utils/alertas');
 
 const filtrosSchema = z.object({
   buscar: textoOpc,
@@ -85,7 +85,7 @@ async function resumen(req, res) {
   try {
     const ambito = ambitoDelUsuario(req.usuario);
 
-    const [pendientes, vencidas, porTipo] = await Promise.all([
+    const [pendientes, vencidas, agrupadas] = await Promise.all([
       prisma.alerta.count({ where: { ...ambito, estado: 'PENDIENTE' } }),
       prisma.alerta.count({ where: { ...ambito, estado: 'PENDIENTE', tipo: 'VENCIDA' } }),
       prisma.alerta.groupBy({
@@ -98,7 +98,7 @@ async function resumen(req, res) {
     return res.json({
       pendientes,
       vencidas,
-      porTipo: porTipo.reduce((acc, t) => ({ ...acc, [t.tipo]: t._count }), {}),
+      porTipo: contarPorTipo(agrupadas), // esquema cerrado y congelado (utils/alertas.js)
     });
   } catch (error) {
     console.error('Error al calcular el resumen de alertas:', error);
