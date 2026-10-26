@@ -5,7 +5,7 @@
 // modelo `Alerta` impide duplicados, y además se consulta lo ya existente
 // antes de insertar. Se puede ejecutar tantas veces al día como haga falta.
 
-const { UMBRALES_ALERTA } = require('./enums');
+const { UMBRALES_ALERTA, TIPOS_ALERTA } = require('./enums');
 
 // Estados en los que un mantenimiento todavía "espera" ejecución y por tanto
 // admite alertas. Los de ejecución o cierre no generan nada.
@@ -126,8 +126,30 @@ async function generarAlertas(prisma, { hoy = new Date() } = {}) {
   return { generadas: nuevas.length, porTipo, revisados: mantenimientos.length };
 }
 
+// OWASP A03:2021 (Prototype Pollution) — el resumen de la campana responde un objeto
+// con un esquema cerrado: siempre las cuatro claves del enum, en cero si no hay
+// alertas de ese tipo. Un `tipo` que no esté en el enum (o `__proto__`) se descarta,
+// y el resultado se congela: nadie le agrega ni le cambia claves después.
+const ESQUEMA_ALERTAS_POR_TIPO = Object.freeze(Object.fromEntries(TIPOS_ALERTA.map((tipo) => [tipo, 0])));
+
+/**
+ * @param {{ tipo: string, _count: number }[]} agrupadas resultado de prisma.alerta.groupBy
+ * @returns {Readonly<Record<string, number>>}
+ */
+function contarPorTipo(agrupadas) {
+  const porTipo = { ...ESQUEMA_ALERTAS_POR_TIPO };
+  for (const { tipo, _count: cantidad } of agrupadas) {
+    if (Object.prototype.hasOwnProperty.call(ESQUEMA_ALERTAS_POR_TIPO, tipo) && Number.isInteger(cantidad)) {
+      porTipo[tipo] = cantidad;
+    }
+  }
+  return Object.freeze(porTipo);
+}
+
 module.exports = {
   ESTADOS_ALERTABLES,
+  ESQUEMA_ALERTAS_POR_TIPO,
+  contarPorTipo,
   diasEntre,
   alertaQueCorresponde,
   redactarMensaje,
