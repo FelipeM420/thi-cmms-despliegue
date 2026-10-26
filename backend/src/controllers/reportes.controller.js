@@ -3,7 +3,8 @@
 // El controlador valida la consulta, lee la base con un tope de filas y delega
 // el cálculo a funciones puras probadas sin base de datos:
 //   utils/intervenciones (formato común), utils/indicadores (HU19-HU21 y
-//   dashboard), utils/recursos (HU22), utils/historial (HU23), utils/reportesCsv.
+//   dashboard), utils/recursos (HU22), utils/historial (HU23), utils/reportesCsv
+//   y utils/reportesExcel (reporte ejecutivo .xlsx, Fase 2).
 // Fechas: fechaEjecucion es un instante (día de Colombia) y fechaServicio una
 // fecha de calendario (día UTC): cada una se filtra con su rango (utils/periodos).
 const { z } = require('zod');
@@ -18,6 +19,7 @@ const { costosPorTrimestre, rankingEquipos, reportePorArea, cumplimientoPlan, de
 const { consumoRecursos } = require('../utils/recursos');
 const { paginaDeHistorial, validarPaginacion, MAX_VENTANA_HISTORIAL } = require('../utils/historial');
 const csv = require('../utils/reportesCsv');
+const { generarLibroReporte, resumenEjecutivo, MIME_XLSX } = require('../utils/reportesExcel');
 
 // Tope de filas por fuente en un reporte: acota memoria y tiempo de respuesta.
 const MAX_REGISTROS_REPORTE = 20000;
@@ -38,6 +40,7 @@ const entero = (etiqueta, { min, max, porDefecto }) =>
   );
 
 const periodoSchema = z.object({ desde: textoOpc, hasta: textoOpc, formato: enumOpc(['json', 'csv'], 'formato') });
+const ejecutivoSchema = periodoSchema.extend({ formato: enumOpc(['json', 'xlsx'], 'formato') });
 const costosSchema = z.object({
   anio: z.preprocess(
     vacioAUndefined,
@@ -134,15 +137,31 @@ async function intervencionesDelPeriodo(periodo) {
   return [...ejecuciones.map(desdeEjecucion), ...servicios.map(desdeServicioExterno)];
 }
 
-function enviarCsv(res, nombre, contenido) {
+function enviarArchivo(res, { nombre, extension, tipo, contenido }) {
   const seguro = nombre.replace(/[^a-z0-9_-]/gi, '');
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="thi-cmms-${seguro}.csv"`);
+  res.setHeader('Content-Type', tipo);
+  res.setHeader('Content-Disposition', `attachment; filename="thi-cmms-${seguro}.${extension}"`);
   res.setHeader('Cache-Control', 'no-store');
   return res.send(contenido);
 }
 
+const enviarCsv = (res, nombre, contenido) => enviarArchivo(res, { nombre, extension: 'csv', tipo: 'text/csv; charset=utf-8', contenido });
+const enviarXlsx = (res, nombre, contenido) => enviarArchivo(res, { nombre, extension: 'xlsx', tipo: MIME_XLSX, contenido });
+
 const nombreDePeriodo = (periodo) => `${periodo.desde}_${periodo.hasta}`;
+
+const conteo = (argumentos, campo) => argumentos.then((filas) => desdeGroupBy(filas, campo));
+
+// Cumplimiento del plan preventivo: fechaProgramada es una fecha de calendario.
+const planDe = (periodo) =>
+  conteo(
+    prisma.mantenimientoProgramado.groupBy({
+      by: ['estado'],
+      where: { naturaleza: 'PREVENTIVO', fechaProgramada: rangoFechasCalendario(periodo) },
+      _count: { _all: true },
+    }),
+    'estado'
+  );
 
 // --- HU19 · Costos por tipo de mantenimiento (trimestral y anual) --------------
 
@@ -288,9 +307,42 @@ const historial = asyncHandler(async (req, res) => {
   return res.json({ items, total, pagina, limite, periodo });
 });
 
-// --- Dashboard -----------------------------------------------------------------
+// --- Fase 2 · Reporte ejecutivo (Excel) ------------------------------------------
 
-const conteo = (argumentos, campo) => argumentos.then((filas) => desdeGroupBy(filas, campo));
+// Cada línea de insumo con el equipo intervenido y la OT de su mantenimiento.
+const SELECT_LINEA_EJECUTIVO = {
+  descripcion: true,
+  unidad: true,
+  cantidad: true,
+  costoUnitario: true,
+  costoLinea: true,
+  equipoInsumo: { select: { referencia: true, nombre: true, tipoActivo: true } },
+  registroEjecucion: {
+    select: {
+      fechaEjecucion: true,
+      mantenimientoProgramado: { select: { equipo: EQUIPO, ordenTrabajo: { select: { consecutivo: true } } } },
+    },
+  },
+};
+
+// GET /api/reportes/ejecutivo?desde=&hasta=&formato=json|xlsx
+// Libro de tres pestañas (indicadores, historial de costos, insumos por equipo).
+const ejecutivo = asyncHandler(async (req, res) => {
+  const consulta = validar(ejecutivoSchema, req.query);
+  const periodo = periodoDe(consulta);
+  const [intervenciones, lineas, plan] = await Promise.all([
+    intervencionesDelPeriodo(periodo),
+    leerAcotado(prisma.insumoUtilizado, { where: { registroEjecucion: whereEjecuciones(periodo) }, select: SELECT_LINEA_EJECUTIVO }),
+    planDe(periodo),
+  ]);
+  if (consulta.formato === 'xlsx') {
+    const libro = await generarLibroReporte({ periodo, intervenciones, lineas, plan });
+    return enviarXlsx(res, `ejecutivo-${nombreDePeriodo(periodo)}`, libro);
+  }
+  return res.json({ periodo, ...resumenEjecutivo({ intervenciones, lineas, plan }) });
+});
+
+// --- Dashboard -----------------------------------------------------------------
 
 // GET /api/reportes/resumen — indicadores del año en curso para el dashboard.
 const resumen = asyncHandler(async (req, res) => {
@@ -298,16 +350,6 @@ const resumen = asyncHandler(async (req, res) => {
   const anio = Number(hoy.slice(0, 4));
   const periodoAnio = { desde: `${anio}-01-01`, hasta: hoy };
   const periodoMes = { desde: `${hoy.slice(0, 7)}-01`, hasta: hoy };
-  // Cumplimiento del plan preventivo: fechaProgramada es una fecha de calendario.
-  const planDe = (periodo) =>
-    conteo(
-      prisma.mantenimientoProgramado.groupBy({
-        by: ['estado'],
-        where: { naturaleza: 'PREVENTIVO', fechaProgramada: rangoFechasCalendario(periodo) },
-        _count: { _all: true },
-      }),
-      'estado'
-    );
 
   const [intervenciones, planAnio, planMes, ordenes, alertas, equiposPorEstado] = await Promise.all([
     intervencionesDelPeriodo(periodoAnio),
@@ -333,4 +375,4 @@ const resumen = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { costos, equipos, areas, recursos, historial, resumen };
+module.exports = { costos, equipos, areas, recursos, historial, ejecutivo, resumen };

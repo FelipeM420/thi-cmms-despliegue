@@ -140,4 +140,15 @@ function csvHistorial(items) {
   );
 }
 
-module.exports = { csvCostos, csvEquipos, csvAreas, csvInsumos, csvManoDeObra, csvHistorial };
+module.exports = {
+  csvCostos,
+  csvEquipos,
+  csvAreas,
+  csvInsumos,
+  csvManoDeObra,
+  csvHistorial,
+  // Etiquetas legibles: también las usa la exportación a Excel (utils/reportesExcel.js).
+  ETIQUETA_TIPO,
+  ETIQUETA_ACTIVO,
+  ETIQUETA,
+};
