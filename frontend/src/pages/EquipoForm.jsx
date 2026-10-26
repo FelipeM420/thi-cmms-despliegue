@@ -83,10 +83,10 @@ export default function EquipoForm() {
 
       {error && <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg mb-5">{error}</div>}
 
-      <form onSubmit={manejarSubmit} className="bg-white border border-slate-200 rounded-xl p-7 flex flex-col gap-6 max-w-4xl">
+      <form onSubmit={manejarSubmit} className="bg-white border border-slate-200 rounded-xl p-4 sm:p-7 flex flex-col gap-6 max-w-4xl">
         <div>
           <h3 className="text-slate-900 font-bold text-sm mb-4">Información general</h3>
-          <div className="grid grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
             <div>
               <label className={labelClase}>Nombre del equipo</label>
               <input required className={inputClase} value={campos.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} placeholder="Ej. Autoclave Vertical" />
@@ -158,7 +158,7 @@ export default function EquipoForm() {
           <textarea rows={3} className={inputClase} value={campos.descripcionTecnica} onChange={(e) => actualizarCampo('descripcionTecnica', e.target.value)} placeholder="Detalles técnicos, capacidad, especificaciones relevantes..." />
         </div>
 
-        <div className="grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div>
             <label className={labelClase}>Registro fotográfico</label>
             {esEdicion && actuales.fotoUrl && !foto && (

@@ -14,7 +14,9 @@ const NAV_ITEMS = [
   { to: '/usuarios', label: 'Usuarios', Icon: Users, soloAdmin: true },
 ];
 
-export default function Sidebar() {
+// `className` decide dónde se muestra (fija en escritorio o dentro del cajón
+// móvil del Layout); `onNavegar` cierra ese cajón al elegir una opción.
+export default function Sidebar({ className = 'flex', onNavegar }) {
   const { usuario, logout } = useAuth();
   const esAdmin = usuario?.rol === 'ADMINISTRADOR';
   // Para el técnico, /mantenimiento es su vista "Mis tareas" (HU8).
@@ -29,7 +31,7 @@ export default function Sidebar() {
     .toUpperCase();
 
   return (
-    <aside className="w-[260px] shrink-0 bg-slate-900 flex flex-col py-7 px-5">
+    <aside className={`${className} w-[260px] max-w-full shrink-0 bg-slate-900 flex-col py-7 px-5`}>
       <div className="flex items-center gap-2.5 mb-8">
         <div className="w-9 h-9 rounded-[10px] bg-blue-600 flex items-center justify-center text-white font-bold">T</div>
         <div>
@@ -43,6 +45,7 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            onClick={onNavegar}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'

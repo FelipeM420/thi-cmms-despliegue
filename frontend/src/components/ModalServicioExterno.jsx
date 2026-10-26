@@ -87,7 +87,7 @@ export default function ModalServicioExterno({ equipo, servicio, mantenimientosC
           {equipo.nombre} · {equipo.referencia}. El costo es el valor que factura el proveedor, tal cual.
         </p>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo id="se-naturaleza" etiqueta="Naturaleza">
             <select
               id="se-naturaleza"
@@ -139,7 +139,7 @@ export default function ModalServicioExterno({ equipo, servicio, mantenimientosC
           />
         </Campo>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo id="se-costo" etiqueta="Costo facturado (COP)" ayuda="Punto o coma para los decimales; sin separador de miles.">
             <input
               id="se-costo"

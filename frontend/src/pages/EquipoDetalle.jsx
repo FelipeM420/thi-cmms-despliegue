@@ -240,52 +240,54 @@ function HistorialMantenimiento({ intervenciones }) {
           </button>
         </div>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
-              <th className="py-2 font-medium">FECHA</th>
-              <th className="py-2 font-medium">TAREA</th>
-              <th className="py-2 font-medium">ESTADO</th>
-              <th className="py-2 font-medium">TÉCNICO</th>
-              <th className="py-2 font-medium">TIEMPO</th>
-              <th className="py-2 font-medium text-right">COSTO</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibles.map((m) => (
-              <tr key={m.id} className="border-b border-slate-50 last:border-0">
-                <td className="py-2.5 text-slate-700">{formatearFecha(m.fechaProgramada)}</td>
-                <td className="py-2.5 text-slate-600">
-                  {m.tarea?.nombre || '—'}
-                  {m.estado === 'NO_EJECUTADO' && m.registroEjecucion?.motivoNoEjecucion && (
-                    <span className="block text-xs text-amber-600">
-                      {m.registroEjecucion.motivoNoEjecucion}
-                    </span>
-                  )}
-                </td>
-                <td className="py-2.5"><EstadoMantenimientoBadge estado={m.estado} /></td>
-                <td className="py-2.5 text-slate-600">
-                  {m.tecnicoAsignado ? conDistintivo('TECNICO', m.tecnicoAsignado.nombre) : <span className="text-slate-400">Sin asignar</span>}
-                </td>
-                <td className="py-2.5 text-slate-600">
-                  {m.registroEjecucion?.finalizadoEn && m.registroEjecucion.minutosTrabajados != null
-                    ? `${m.registroEjecucion.minutosTrabajados} min`
-                    : '—'}
-                </td>
-                <td className="py-2.5 text-right text-slate-700">
-                  {m.registroEjecucion?.finalizadoEn ? (
-                    formatearMoneda(m.registroEjecucion.costoTotal)
-                  ) : m.servicioExterno ? (
-                    // HU1 — lo hizo un proveedor: su costo está en «Servicios externos».
-                    <span className="text-xs text-slate-500">Servicio externo · {m.servicioExterno.proveedor}</span>
-                  ) : (
-                    '—'
-                  )}
-                </td>
+        <div className="overflow-x-auto overscroll-x-contain">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
+                <th className="py-2 font-medium">FECHA</th>
+                <th className="py-2 font-medium">TAREA</th>
+                <th className="py-2 font-medium">ESTADO</th>
+                <th className="py-2 font-medium">TÉCNICO</th>
+                <th className="py-2 font-medium">TIEMPO</th>
+                <th className="py-2 font-medium text-right">COSTO</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {visibles.map((m) => (
+                <tr key={m.id} className="border-b border-slate-50 last:border-0">
+                  <td className="py-2.5 text-slate-700">{formatearFecha(m.fechaProgramada)}</td>
+                  <td className="py-2.5 text-slate-600">
+                    {m.tarea?.nombre || '—'}
+                    {m.estado === 'NO_EJECUTADO' && m.registroEjecucion?.motivoNoEjecucion && (
+                      <span className="block text-xs text-amber-600">
+                        {m.registroEjecucion.motivoNoEjecucion}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2.5"><EstadoMantenimientoBadge estado={m.estado} /></td>
+                  <td className="py-2.5 text-slate-600">
+                    {m.tecnicoAsignado ? conDistintivo('TECNICO', m.tecnicoAsignado.nombre) : <span className="text-slate-400">Sin asignar</span>}
+                  </td>
+                  <td className="py-2.5 text-slate-600">
+                    {m.registroEjecucion?.finalizadoEn && m.registroEjecucion.minutosTrabajados != null
+                      ? `${m.registroEjecucion.minutosTrabajados} min`
+                      : '—'}
+                  </td>
+                  <td className="py-2.5 text-right text-slate-700">
+                    {m.registroEjecucion?.finalizadoEn ? (
+                      formatearMoneda(m.registroEjecucion.costoTotal)
+                    ) : m.servicioExterno ? (
+                      // HU1 — lo hizo un proveedor: su costo está en «Servicios externos».
+                      <span className="text-xs text-slate-500">Servicio externo · {m.servicioExterno.proveedor}</span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

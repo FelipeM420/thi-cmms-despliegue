@@ -145,13 +145,13 @@ export default function UsuariosView() {
         />
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200 bg-white">
         {cargando ? (
           <p className="p-6 text-sm text-slate-400">Cargando cuentas…</p>
         ) : visibles.length === 0 ? (
           <p className="p-6 text-sm text-slate-400">No hay cuentas que coincidan con la búsqueda.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[600px] text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
                 <th className="px-5 py-3 font-medium">NOMBRE</th>

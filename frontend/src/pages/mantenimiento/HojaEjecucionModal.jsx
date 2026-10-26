@@ -452,8 +452,8 @@ function SeccionInsumos({ ejecucion, equiposInsumo, ocupado, onAdd, onDelete }) 
       </h4>
 
       {ejecucion.insumos.length > 0 && (
-        <div className="mb-3 overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full text-sm">
+        <div className="mb-3 overflow-x-auto overscroll-x-contain rounded-lg border border-slate-200">
+          <table className="w-full min-w-[480px] text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-400">
                 <th className="px-3 py-2 font-medium">DESCRIPCIÓN</th>

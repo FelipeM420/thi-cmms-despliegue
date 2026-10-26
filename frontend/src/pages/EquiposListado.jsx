@@ -148,14 +148,14 @@ export default function EquiposListado() {
         )}
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto overscroll-x-contain">
         {error && <p className="text-red-600 text-sm p-6">{error}</p>}
         {!error && cargando && <p className="text-slate-400 text-sm p-6">Cargando equipos…</p>}
         {!error && !cargando && equipos.length === 0 && (
           <p className="text-slate-400 text-sm p-6">No hay equipos que coincidan con los filtros.</p>
         )}
         {!error && !cargando && equipos.length > 0 && (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[680px] text-sm">
             <thead>
               <tr className="text-left text-slate-400 text-xs border-b border-slate-100">
                 <th className="font-medium px-5 py-3">CÓDIGO</th>

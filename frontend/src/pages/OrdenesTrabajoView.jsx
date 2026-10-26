@@ -232,7 +232,7 @@ export default function OrdenesTrabajoView() {
       {error && <div role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
       {aviso && <div role="status" className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{aviso}</div>}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200 bg-white">
         {cargando && <p className="p-6 text-sm text-slate-400">Cargando…</p>}
 
         {!cargando && ordenes.length === 0 && (
@@ -259,7 +259,7 @@ export default function OrdenesTrabajoView() {
         )}
 
         {!cargando && ordenes.length > 0 && (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
                 <th className="px-5 py-3 font-medium">CONSECUTIVO</th>
@@ -438,7 +438,7 @@ function ModalEmitirOrden({ equipos, tecnicos, onClose, onEmitida }) {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className={label}>Equipo</label>
                 <select required className={input} value={campos.equipoId} onChange={(e) => set('equipoId', e.target.value)}>
@@ -458,7 +458,7 @@ function ModalEmitirOrden({ equipos, tecnicos, onClose, onEmitida }) {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
                 <label className={label}>Técnico</label>
                 <select

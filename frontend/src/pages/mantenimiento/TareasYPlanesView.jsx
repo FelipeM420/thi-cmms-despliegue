@@ -162,7 +162,7 @@ function Tareas() {
 
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200 bg-white">
         {cargando && <p className="p-6 text-sm text-slate-400">Cargando…</p>}
         {!cargando && tareasFiltradas.length === 0 && (
           <p className="p-6 text-sm text-slate-400">
@@ -170,7 +170,7 @@ function Tareas() {
           </p>
         )}
         {!cargando && tareasFiltradas.length > 0 && (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
                 <th className="px-5 py-3 font-medium">TAREA</th>
@@ -287,7 +287,7 @@ function FormTarea({ tarea, onClose, onGuardado }) {
           <label className={label}>Recursos (opcional)</label>
           <input className={input} value={campos.recursos} onChange={(e) => set('recursos', e.target.value)} placeholder="Ej. Grasa NLGI 2, llave de torque" />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className={label}>Duración estimada (min)</label>
             <input type="number" min="1" className={input} value={campos.duracionEstimadaMin} onChange={(e) => set('duracionEstimadaMin', e.target.value)} />
@@ -470,7 +470,7 @@ function Planes() {
 
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200 bg-white">
         {cargando && <p className="p-6 text-sm text-slate-400">Cargando…</p>}
         {!cargando && planesFiltrados.length === 0 && (
           <p className="p-6 text-sm text-slate-400">
@@ -478,7 +478,7 @@ function Planes() {
           </p>
         )}
         {!cargando && planesFiltrados.length > 0 && (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-slate-400">
                 <th className="px-5 py-3 font-medium">EQUIPO</th>
@@ -614,7 +614,7 @@ function FormPlan({ equipos, tareas, onClose, onGuardado }) {
             ))}
           </select>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <label className={label}>Frecuencia</label>
             <select className={input} value={campos.frecuencia} onChange={(e) => set('frecuencia', e.target.value)}>
