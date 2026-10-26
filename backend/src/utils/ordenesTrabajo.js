@@ -14,6 +14,41 @@ const CAMPOS_DEL_MANTENIMIENTO = ['tecnicoAsignadoId', 'fechaProgramada', 'prior
 
 const soloAbiertas = { estado: { in: ESTADOS_ABIERTOS } };
 
+// Datos de una OT para la API (HU16) y, con los insumos de su ejecución, para
+// el PDF (HU15) y el correo que lo adjunta (Fase 1, notificaciones).
+const INCLUDE_ORDEN = {
+  equipo: {
+    select: {
+      id: true, nombre: true, referencia: true, zona: true,
+      numeroSerie: true, marca: true, tipoMantenimiento: true,
+    },
+  },
+  tarea: { select: { id: true, nombre: true, descripcion: true, recursos: true, duracionEstimadaMin: true } },
+  tecnicoAsignado: { select: { id: true, nombre: true, email: true } },
+  emitidaPor: { select: { id: true, nombre: true } },
+  mantenimientoProgramado: { select: { id: true, fechaProgramada: true, estado: true } },
+};
+
+const INCLUDE_ORDEN_PDF = {
+  ...INCLUDE_ORDEN,
+  mantenimientoProgramado: {
+    select: {
+      id: true,
+      fechaProgramada: true,
+      estado: true,
+      naturaleza: true,
+      registroEjecucion: {
+        select: {
+          insumos: {
+            orderBy: { creadoEn: 'asc' },
+            select: { descripcion: true, cantidad: true, unidad: true, costoUnitario: true, costoLinea: true },
+          },
+        },
+      },
+    },
+  },
+};
+
 /**
  * Traduce un evento del mantenimiento programado al cambio que debe sufrir su
  * OT. Devuelve `{ donde, datos }` para un `updateMany` (el filtro por estado
@@ -218,4 +253,6 @@ module.exports = {
   camposBloqueadosDeOrdenVinculada,
   puedeCerrarManualmente,
   CODIGO_CAMBIO_DE_ESTADO,
+  INCLUDE_ORDEN,
+  INCLUDE_ORDEN_PDF,
 };

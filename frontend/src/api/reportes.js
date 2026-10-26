@@ -47,23 +47,32 @@ function nombreDeArchivo(cabecera, porDefecto) {
   return coincidencia ? coincidencia[1] : porDefecto;
 }
 
-// Exportación a CSV (Excel en español: separador ";" y coma decimal).
-export async function descargarCsvReporte(ruta, filtros = {}) {
+async function descargarArchivo(ruta, params, { tipo, porDefecto }) {
   let respuesta;
   try {
-    respuesta = await client.get(`/reportes/${ruta}`, {
-      params: soloConValor({ ...filtros, formato: 'csv' }),
-      responseType: 'blob',
-    });
+    respuesta = await client.get(`/reportes/${ruta}`, { params: soloConValor(params), responseType: 'blob' });
   } catch (err) {
     throw new Error((await mensajeDeError(err)) || 'No se pudo exportar el reporte.');
   }
-  const url = URL.createObjectURL(new Blob([respuesta.data], { type: 'text/csv;charset=utf-8' }));
+  const url = URL.createObjectURL(new Blob([respuesta.data], { type: tipo }));
   const enlace = document.createElement('a');
   enlace.href = url;
-  enlace.download = nombreDeArchivo(respuesta.headers['content-disposition'], `thi-cmms-${ruta}.csv`);
+  enlace.download = nombreDeArchivo(respuesta.headers['content-disposition'], porDefecto);
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();
   URL.revokeObjectURL(url);
 }
+
+// Exportación a CSV (Excel en español: separador ";" y coma decimal).
+export const descargarCsvReporte = (ruta, filtros = {}) =>
+  descargarArchivo(ruta, { ...filtros, formato: 'csv' }, { tipo: 'text/csv;charset=utf-8', porDefecto: `thi-cmms-${ruta}.csv` });
+
+// Fase 2 — reporte ejecutivo del periodo en Excel (.xlsx): indicadores,
+// historial de costos e insumos por equipo, con fórmulas nativas.
+export const descargarReporteExcel = ({ desde, hasta } = {}) =>
+  descargarArchivo(
+    'ejecutivo',
+    { desde, hasta, formato: 'xlsx' },
+    { tipo: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', porDefecto: 'thi-cmms-ejecutivo.xlsx' }
+  );

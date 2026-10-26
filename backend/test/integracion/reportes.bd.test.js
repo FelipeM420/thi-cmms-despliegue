@@ -163,7 +163,7 @@ async function api(ruta, usuario = admin) {
 // ---------------------------------------------------------------------------
 
 test('los reportes son solo del administrador: 401 sin sesión, 403 para el técnico', { skip: omitir }, async () => {
-  for (const ruta of ['/costos', '/equipos', '/areas', '/recursos', '/historial', '/resumen']) {
+  for (const ruta of ['/costos', '/equipos', '/areas', '/recursos', '/historial', '/ejecutivo', '/resumen']) {
     assert.equal((await api(ruta, null)).estado, 401, ruta);
     assert.equal((await api(ruta, tecnico1)).estado, 403, ruta);
   }
@@ -326,6 +326,36 @@ test('CSV: cada reporte exporta su tabla', { skip: omitir }, async () => {
     assert.equal(estado, 200, ruta);
     assert.ok(cuerpo.startsWith(`\uFEFF${encabezado}`), `${ruta}: ${cuerpo.slice(0, 40)}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Reporte ejecutivo en Excel (Fase 2)
+// ---------------------------------------------------------------------------
+
+test('Excel: el reporte ejecutivo se descarga como .xlsx con sus tres pestañas', { skip: omitir }, async () => {
+  const ExcelJS = require('exceljs');
+  const respuesta = await fetch(`${base}/api/reportes/ejecutivo${ANIO}&formato=xlsx`, { headers: { Authorization: `Bearer ${token(admin)}` } });
+  assert.equal(respuesta.status, 200);
+  assert.equal(respuesta.headers.get('content-type'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.match(respuesta.headers.get('content-disposition'), /attachment; filename="thi-cmms-ejecutivo-2026-01-01_2026-12-31\.xlsx"/);
+  assert.equal(respuesta.headers.get('cache-control'), 'no-store');
+
+  const libro = new ExcelJS.Workbook();
+  await libro.xlsx.load(Buffer.from(await respuesta.arrayBuffer()));
+  assert.deepEqual(libro.worksheets.map((h) => h.name), ['Resumen de Indicadores', 'Historial de Costos', 'Insumos y Repuestos']);
+  const historial = libro.getWorksheet('Historial de Costos');
+  const descripciones = [];
+  historial.eachRow((fila, n) => {
+    if (n > 4) descripciones.push(fila.getCell('I').value);
+  });
+  // 6 intervenciones + la fila de totales; la fórmula del proveedor queda como texto.
+  assert.equal(descripciones.length, 7);
+  assert.ok(descripciones.includes('=HYPERLINK("http://malo")'));
+
+  const { estado, cuerpo } = await api(`/ejecutivo${ANIO}`);
+  assert.equal(estado, 200);
+  assert.equal(cuerpo.intervenciones.total, 6);
+  assert.equal((await api(`/ejecutivo${ANIO}&formato=pdf`)).estado, 400);
 });
 
 // ---------------------------------------------------------------------------

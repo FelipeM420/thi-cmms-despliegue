@@ -1,5 +1,5 @@
 const express = require('express');
-const { costos, equipos, areas, recursos, historial, resumen } = require('../controllers/reportes.controller');
+const { costos, equipos, areas, recursos, historial, ejecutivo, resumen } = require('../controllers/reportes.controller');
 const { verificarToken, requiereRol } = require('../middleware/auth');
 const { crearLimitadorReportes } = require('../middleware/limitadores');
 
@@ -16,5 +16,6 @@ router.get('/equipos', equipos);
 router.get('/areas', areas);
 router.get('/recursos', recursos);
 router.get('/historial', historial);
+router.get('/ejecutivo', ejecutivo);
 
 module.exports = router;

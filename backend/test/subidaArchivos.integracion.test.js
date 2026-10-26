@@ -29,6 +29,11 @@ const respaldoFalso = {
     enRespaldo.delete(nombre);
   },
 };
+// Doble de la copia externa (Google Drive, Fase 3): anota los nombres recibidos.
+const copiasExternas = [];
+const copiaExternaFalsa = (archivos) => {
+  copiasExternas.push(archivos.map((a) => a.filename));
+};
 // Respaldo cuya base está caída.
 const respaldoRoto = {
   guardar: async () => {
@@ -73,6 +78,24 @@ test.before(async () => {
     ...crearSubida({ foto: { tipo: 'imagen', etiqueta: 'El registro fotográfico' } }, { directorio, respaldo: respaldoRoto }),
     (req, res) => res.json({})
   );
+  app.post(
+    '/subir-con-copia-externa/:estado',
+    ...crearSubida({ foto: { tipo: 'imagen', etiqueta: 'El registro fotográfico' } }, { directorio, copiaExterna: copiaExternaFalsa }),
+    (req, res) => res.status(Number(req.params.estado)).json({ nombre: req.files?.foto?.[0]?.filename ?? null })
+  );
+  app.post(
+    '/subir-con-copia-externa-rota',
+    ...crearSubida(
+      { foto: { tipo: 'imagen', etiqueta: 'El registro fotográfico' } },
+      {
+        directorio,
+        copiaExterna: () => {
+          throw new Error('Drive caído');
+        },
+      }
+    ),
+    (req, res) => res.json({ ok: true })
+  );
   app.use(manejadorErrores);
   servidor = await new Promise((resolver) => {
     const s = app.listen(0, '127.0.0.1', () => resolver(s));
@@ -88,6 +111,7 @@ test.after(() => {
 test.beforeEach(() => {
   for (const nombre of fs.readdirSync(directorio)) fs.rmSync(path.join(directorio, nombre), { force: true });
   enRespaldo.clear();
+  copiasExternas.length = 0;
 });
 
 function formulario(partes) {
@@ -281,4 +305,55 @@ test('con respaldo: si la base falla se responde 500 y no queda el archivo en di
   const { estado } = await subirConRespaldo('/subir-con-respaldo-roto', fotoPng);
   assert.equal(estado, 500);
   assert.deepEqual(archivosEnDisco(), []);
+});
+
+// --- Copia externa (Fase 3, Google Drive) -------------------------------------
+
+const esperarFinish = () => new Promise((resolver) => setImmediate(resolver));
+
+test('copia externa: tras un 2xx recibe los archivos aceptados', async () => {
+  const respuesta = await fetch(`${base}/subir-con-copia-externa/200`, {
+    method: 'POST',
+    body: formulario([{ campo: 'foto', contenido: PNG, tipo: 'image/png', nombre: 'a.png' }]),
+  });
+  const { nombre } = await respuesta.json();
+  await esperarFinish();
+  assert.deepEqual(copiasExternas, [[nombre]]);
+});
+
+test('copia externa: si el controlador rechaza (4xx) o falla (5xx), no se copia nada', async () => {
+  for (const estado of [400, 409, 500]) {
+    await fetch(`${base}/subir-con-copia-externa/${estado}`, {
+      method: 'POST',
+      body: formulario([{ campo: 'foto', contenido: PNG, tipo: 'image/png', nombre: 'a.png' }]),
+    });
+  }
+  await esperarFinish();
+  assert.deepEqual(copiasExternas, []);
+});
+
+test('copia externa: un contenido rechazado no llega a la copia', async () => {
+  const respuesta = await fetch(`${base}/subir-con-copia-externa/200`, {
+    method: 'POST',
+    body: formulario([{ campo: 'foto', contenido: HTML, tipo: 'image/png', nombre: 'a.png' }]),
+  });
+  assert.equal(respuesta.status, 400);
+  await esperarFinish();
+  assert.deepEqual(copiasExternas, []);
+});
+
+test('copia externa: un fallo de la copia no cambia la respuesta', async () => {
+  const respuesta = await fetch(`${base}/subir-con-copia-externa-rota`, {
+    method: 'POST',
+    body: formulario([{ campo: 'foto', contenido: PNG, tipo: 'image/png', nombre: 'a.png' }]),
+  });
+  assert.equal(respuesta.status, 200);
+  assert.deepEqual(await respuesta.json(), { ok: true });
+});
+
+test('sin archivos, la copia externa no se invoca', async () => {
+  const respuesta = await fetch(`${base}/subir-con-copia-externa/200`, { method: 'POST', body: new FormData() });
+  assert.equal(respuesta.status, 200);
+  await esperarFinish();
+  assert.deepEqual(copiasExternas, []);
 });

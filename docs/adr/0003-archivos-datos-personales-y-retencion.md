@@ -55,3 +55,21 @@ El sistema servía `/uploads` sin autenticación, confiaba en el tipo de archivo
 - La bitácora de auditoría sigue siendo un archivo plano, no una tabla consultable.
 - Antes se aceptaba cualquier `image/*`; ahora `/uploads` solo sirve nombres `<prefijo>-<id>.(png|jpg|jpeg|pdf)`. Un archivo subido antes con otra extensión (webp, gif) dejaría de verse.
   En el entorno de desarrollo se verificó el 2026-09-26 que los seis archivos existentes cumplen el formato; en cualquier otro entorno hay que revisarlo antes de desplegar.
+
+## Actualización 2026-10-26: copia de respaldo en Google Drive (Fase 3)
+
+La Fase 3 envía a una carpeta de Google Drive las evidencias antes/después, una constancia de texto de la firma y las OT en PDF (`src/services/googleDriveRespaldo.service.js`).
+Para la Ley 1581 eso es una **transmisión a un encargado del tratamiento** (Google LLC), que puede ser **internacional**: art. 26 de la Ley 1581 y arts. 2.2.2.25.5.1 y 2.2.2.25.5.2 del Decreto 1074 de 2015.
+
+- El aviso pasó a la versión **`2026-10-v2`**. Ahora informa la copia, al encargado, la posible transmisión internacional y los nombres en las OT, y dice que la conservación y los derechos del titular cubren también la copia.
+  Se quitó la frase «ni se entregan a terceros», que dejó de ser cierta. Al subir la versión, **todos vuelven a ver el aviso y a aceptarlo** antes de registrar ejecuciones.
+- **Evidencias y firma:** solo se copian desde rutas que exigen haber aceptado la versión vigente (`PUT /api/ejecuciones/:id`). La firma la pone únicamente su titular.
+- **OT en PDF:** las genera el sistema, así que antes de enviarlas se comprueba que el técnico asignado y quien la emitió hayan aceptado la versión vigente. Si alguno no la aceptó, la OT no se copia (`SIN_AUTORIZACION`).
+
+### Pendientes jurídicos de la Fase 3
+- **Contrato de transmisión con el proveedor.** Una cuenta de Google Workspace trae un acuerdo de tratamiento de datos (Cloud Data Processing Addendum); una cuenta personal de Gmail no lo trae.
+  Confirmar qué cuenta aloja «THI-CMMS Archivo Digital» y si ese acuerdo basta como contrato de transmisión.
+- Confirmar que Estados Unidos sigue en la lista de países con nivel adecuado de protección que publica la SIC, o documentar la excepción aplicable.
+- **Procedimiento de supresión:** la copia en Drive no se sincroniza sola. Si se aprueba suprimir o rectificar datos, alguien debe hacerlo también a mano en la carpeta.
+- Restringir el acceso a la carpeta a las personas designadas, y revisar el registro de actividad de Drive, que reemplaza a la bitácora de auditoría para esa copia.
+- Actualizar la política de tratamiento de datos de THI S.A.S. (no solo este aviso) e incluir a Google LLC como encargado en el RNBD si la base está inscrita.
