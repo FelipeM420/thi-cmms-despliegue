@@ -391,3 +391,61 @@ test('motor de OT: cada orden emitida se respalda sin esperar y un fallo no deti
   assert.equal(resultado.generadas, 2);
   assert.deepEqual(respaldadas, ['OT-2026-0001', 'OT-2026-0002']);
 });
+
+// --- Ley 1581: solo con la autorización vigente de quienes figuran en la OT ---
+
+const { VERSION_POLITICA } = require('../src/config/politicaDatos');
+
+function prismaConConsentimientos(aceptaron) {
+  const consultas = [];
+  return {
+    consultas,
+    ordenTrabajo: {
+      findUnique: async () => ({ ...ordenParaPdf(), tecnicoAsignado: { id: 'tec-1', nombre: 'Carlos Mendoza' }, emitidaPor: { id: 'adm-1', nombre: 'Sebastián Moreno' } }),
+    },
+    consentimientoTratamiento: {
+      findMany: async (args) => {
+        consultas.push(args);
+        return aceptaron.map((usuarioId) => ({ usuarioId }));
+      },
+    },
+  };
+}
+
+test('OT: si alguien que figura en ella no aceptó el aviso vigente, no se envía a Drive', async () => {
+  const prisma = prismaConConsentimientos(['adm-1']);
+  const fetch = fetchFalso();
+  const resultado = await respaldarOrdenTrabajoEnDrive(prisma, { id: 'ot-1' }, { config: CONFIG, fetch });
+  assert.deepEqual(resultado, { respaldado: false, motivo: 'SIN_AUTORIZACION' });
+  assert.equal(fetch.llamadas.length, 0);
+  const { where } = prisma.consultas[0];
+  assert.deepEqual([...where.usuarioId.in].sort(), ['adm-1', 'tec-1']);
+  assert.equal(where.versionPolitica, VERSION_POLITICA);
+});
+
+test('OT: con la autorización vigente de todos los que figuran, se envía', async () => {
+  const fetch = fetchFalso();
+  const resultado = await respaldarOrdenTrabajoEnDrive(prismaConConsentimientos(['tec-1', 'adm-1']), { id: 'ot-1' }, { config: CONFIG, fetch });
+  assert.equal(resultado.respaldado, true);
+  assert.equal(fetch.llamadas.length, 1);
+});
+
+test('OT: emitida por el sistema y sin técnico, no hay a quién pedir autorización y se envía', async () => {
+  let consultas = 0;
+  const prisma = {
+    ordenTrabajo: { findUnique: async () => ({ ...ordenParaPdf(), tecnicoAsignado: null, emitidaPor: null }) },
+    consentimientoTratamiento: { findMany: async () => { consultas += 1; return []; } },
+  };
+  const fetch = fetchFalso();
+  const resultado = await respaldarOrdenTrabajoEnDrive(prisma, { id: 'ot-1' }, { config: CONFIG, fetch });
+  assert.equal(resultado.respaldado, true);
+  assert.equal(consultas, 0);
+});
+
+test('OT: el técnico que también la emitió cuenta una sola vez', async () => {
+  const prisma = prismaConConsentimientos(['adm-1']);
+  prisma.ordenTrabajo.findUnique = async () => ({ ...ordenParaPdf(), tecnicoAsignado: { id: 'adm-1', nombre: 'A' }, emitidaPor: { id: 'adm-1', nombre: 'A' } });
+  const resultado = await respaldarOrdenTrabajoEnDrive(prisma, { id: 'ot-1' }, { config: CONFIG, fetch: fetchFalso() });
+  assert.equal(resultado.respaldado, true);
+  assert.deepEqual(prisma.consultas[0].where.usuarioId.in, ['adm-1']);
+});

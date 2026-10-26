@@ -53,11 +53,45 @@ test('el aviso no promete más registro del que existe: se registran las consult
   assert.match(texto, /cada consulta de las fotograf[ií]as/i);
 });
 
+// Fase 3 — las evidencias, la constancia de la firma y las OT se copian a Google Drive.
+// Eso es una transmisión a un encargado del tratamiento, posiblemente fuera de Colombia:
+// el titular debe saberlo antes de aceptar (Ley 1581, arts. 12 y 26; Decreto 1074 de 2015).
+test('el aviso informa la copia en Google Drive, quién la trata y que puede estar fuera de Colombia', () => {
+  const texto = avisoPolitica().parrafos.join('\n');
+  assert.match(texto, /Google Drive/);
+  assert.match(texto, /Google LLC/);
+  assert.match(texto, /encargad[oa] del tratamiento/i);
+  assert.match(texto, /fuera de Colombia/i);
+  assert.match(texto, /transmisi[oó]n internacional/i);
+  assert.match(texto, /art\. 26/);
+  assert.match(texto, /[oó]rdenes de trabajo/i);
+});
+
+test('el aviso ya no afirma que nada se entrega a terceros y aclara el alcance de la bitácora', () => {
+  const texto = avisoPolitica().parrafos.join('\n');
+  assert.doesNotMatch(texto, /ni se entregan a terceros/i);
+  assert.match(texto, /copia en Google Drive solo accede el personal que THI S\.A\.S\. designe/);
+  assert.match(texto, /las registra Google y no quedan en esta bit[aá]cora/i);
+});
+
+test('los derechos y el plazo de conservación cubren también la copia en Google Drive', () => {
+  const parrafos = avisoPolitica().parrafos;
+  const derechos = parrafos.find((p) => p.startsWith('Tus derechos.'));
+  const conservacion = parrafos.find((p) => p.startsWith('Conservación.'));
+  assert.match(derechos, /copia[^.]*Google Drive/i);
+  assert.match(conservacion, /copia[^.]*Google Drive/i);
+});
+
+test('la versión subió con el texto de la Fase 3 (todos vuelven a aceptar)', () => {
+  assert.notEqual(VERSION_POLITICA, '2026-09-v1');
+});
+
 // Cambiar el texto sin subir la versión haría que alguien "acepte" un aviso distinto del
 // que queda registrado. Si esta prueba falla: sube VERSION_POLITICA y registra aquí la
 // huella del texto nuevo (todos volverán a ver el aviso y a aceptarlo).
 const HUELLAS_DEL_TEXTO = {
   '2026-09-v1': '4e1d16341d8c84105d16e2c19afaea3f3cd10a028ad14c370ad8e95f3a016bc0',
+  '2026-10-v2': '8ca420d5732e9dbbf564327f3ea189ba59a9bcc950c3c50e9a1f28682c4a27a3',
 };
 
 test('el texto del aviso corresponde a su versión (cambiar el texto obliga a subir la versión)', () => {

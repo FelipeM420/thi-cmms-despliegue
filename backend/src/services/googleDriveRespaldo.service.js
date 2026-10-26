@@ -9,11 +9,18 @@
 // de este módulo rechaza su promesa: un Drive caído, lento o sin red queda en el
 // log y nunca demora la respuesta HTTP ni revierte una transacción. La copia
 // principal sigue siendo el disco + la tabla `archivos_subidos`.
+//
+// Ley 1581: enviar a Drive es una transmisión a un encargado (Google LLC), que el
+// aviso de config/politicaDatos.js informa. Las evidencias y la firma solo llegan
+// aquí desde rutas que ya exigen haber aceptado el aviso vigente; la OT en PDF la
+// genera el sistema, así que antes de enviarla se comprueba que cada persona que
+// figura en ella (técnico asignado y quien la emitió) aceptó esa versión.
 
 const fs = require('fs');
 const { obtenerConfiguracionDrive } = require('../config/drive');
 const { generarPdfOrdenTrabajoBuffer } = require('../utils/pdfOrdenTrabajo');
 const { INCLUDE_ORDEN_PDF } = require('../utils/ordenesTrabajo');
+const { VERSION_POLITICA } = require('../config/politicaDatos');
 
 const SUBCARPETAS_DRIVE = Object.freeze({
   EVIDENCIA_ANTES: 'Evidencias Fotograficas (Antes)',
@@ -166,9 +173,22 @@ function respaldarEvidenciasEnDrive(archivos, opciones = {}) {
   );
 }
 
+/** true si todas las personas que figuran en la OT aceptaron la versión vigente del aviso. */
+async function autorizaronQuienesFiguran(prisma, orden) {
+  const ids = [...new Set([orden.tecnicoAsignado?.id, orden.emitidaPor?.id].filter(Boolean))];
+  if (ids.length === 0) return true;
+  const aceptaron = await prisma.consentimientoTratamiento.findMany({
+    where: { usuarioId: { in: ids }, versionPolitica: VERSION_POLITICA },
+    select: { usuarioId: true },
+  });
+  const conAutorizacion = new Set(aceptaron.map((c) => c.usuarioId));
+  return ids.every((id) => conAutorizacion.has(id));
+}
+
 /**
  * HU14/HU15 — genera el PDF de una OT y lo copia a "Ordenes de Trabajo PDF".
  * Se llama SIN await después de confirmar la transacción. Nunca rechaza.
+ * Sin la autorización vigente de alguien que figura en la OT responde `SIN_AUTORIZACION` y no envía nada.
  * @param {object} prisma
  * @param {object} donde `where` único de la OT: { id } o { mantenimientoProgramadoId }
  * @param {object} [opciones] { sufijo, config, fetch, registrarError } — sufijo: "emitida" → OT-2026-0005-emitida.pdf
@@ -179,6 +199,7 @@ function respaldarOrdenTrabajoEnDrive(prisma, donde, opciones = {}) {
   return enSegundoPlano(async () => {
     const orden = await prisma.ordenTrabajo.findUnique({ where: donde, include: INCLUDE_ORDEN_PDF });
     if (!orden) return { respaldado: false, motivo: 'SIN_ORDEN' };
+    if (!(await autorizaronQuienesFiguran(prisma, orden))) return { respaldado: false, motivo: 'SIN_AUTORIZACION' };
     const buffer = await generarPdfOrdenTrabajoBuffer(orden);
     const nombreArchivo = `${orden.consecutivo}${ajustado.sufijo ? `-${ajustado.sufijo}` : ''}.pdf`;
     return respaldarArchivoEnDrive({ nombreArchivo, buffer, mimeType: 'application/pdf', subcarpeta: SUBCARPETAS_DRIVE.ORDENES_TRABAJO }, ajustado);
