@@ -72,13 +72,15 @@ const RESULTADOS_EJECUCION = ['COMPLETADO', 'NO_EJECUTADO'];
 // HU14 — ciclo de vida de una orden de trabajo.
 const ESTADOS_ORDEN_TRABAJO = ['EMITIDA', 'EN_PROCESO', 'CERRADA', 'CANCELADA'];
 
-// HU17 (15/8/1 dias de anticipacion) y HU18 (vencidas).
-const TIPOS_ALERTA = ['PREVENTIVA_15D', 'PREVENTIVA_8D', 'PREVENTIVA_1D', 'VENCIDA'];
+// HU17 (30/15/8/1 dias de anticipacion) y HU18 (vencidas).
+const TIPOS_ALERTA = ['PREVENTIVA_30D', 'PREVENTIVA_15D', 'PREVENTIVA_8D', 'PREVENTIVA_1D', 'VENCIDA'];
 
 const ESTADOS_ALERTA = ['PENDIENTE', 'LEIDA', 'RESUELTA'];
 
-// Umbrales de anticipacion del Product Backlog, de mayor a menor.
+// Umbrales de anticipacion, de mayor a menor: los 15/8/1 del Product Backlog
+// y el aviso temprano de 30 dias.
 const UMBRALES_ALERTA = [
+  { dias: 30, tipo: 'PREVENTIVA_30D' },
   { dias: 15, tipo: 'PREVENTIVA_15D' },
   { dias: 8, tipo: 'PREVENTIVA_8D' },
   { dias: 1, tipo: 'PREVENTIVA_1D' },

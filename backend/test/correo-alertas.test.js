@@ -635,6 +635,18 @@ test('solo preventivas: encabezado ámbar; sin técnico ni portal el correo no s
   assert.ok(!correo.html.includes('href='));
 });
 
+test('el aviso temprano de 30 días se rotula en el correo y va con encabezado ámbar', () => {
+  const correo = construirCorreoAlertas({
+    alertas: [alertaBase({ tipo: 'PREVENTIVA_30D', fechaProgramada: dia(2026, 10, 24) })],
+    hoy: HOY_ALERTAS,
+  });
+  for (const cuerpo of [correo.html, correo.texto]) {
+    assert.ok(cuerpo.includes('Preventiva · 30 días'));
+    assert.ok(cuerpo.includes('Faltan 30 días'));
+  }
+  assert.ok(correo.html.includes('background:#b45309'));
+});
+
 test('los datos de las alertas se escapan en el HTML', () => {
   const correo = construirCorreoAlertas({
     alertas: [alertaBase({ mensaje: '<img src=x onerror=1>', equipo: { referencia: '<script>x</script>' } })],

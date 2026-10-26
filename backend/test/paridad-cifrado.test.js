@@ -16,7 +16,7 @@ const LLAVE_SERVIDOR = derivarLlave(CLAVE);
 const MUESTRAS = [
   { email: 'carlos.mendoza@thi.com.co', password: 'THItecnico2026*' },
   [{ id: 'u1', nombre: 'Juan Pablo Pérez', rol: 'TECNICO', permisos: { editar: true } }],
-  { pendientes: 0, vencidas: 0, porTipo: { PREVENTIVA_15D: 0, PREVENTIVA_8D: 0, PREVENTIVA_1D: 0, VENCIDA: 0 } },
+  { pendientes: 0, vencidas: 0, porTipo: { PREVENTIVA_30D: 0, PREVENTIVA_15D: 0, PREVENTIVA_8D: 0, PREVENTIVA_1D: 0, VENCIDA: 0 } },
   { texto: 'ñandú — señal ✓ 漢字', numero: 1234567.89, nulo: null },
 ];
 

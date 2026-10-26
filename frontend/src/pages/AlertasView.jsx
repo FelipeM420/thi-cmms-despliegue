@@ -123,7 +123,7 @@ export default function AlertasView() {
                 )
               }
               className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
-              title="Revisa el cronograma y crea las alertas que correspondan (15/8/1 días y vencidas)"
+              title="Revisa el cronograma y crea las alertas que correspondan (30/15/8/1 días y vencidas)"
             >
               <RefreshCw size={15} /> Generar alertas
             </button>
@@ -132,7 +132,7 @@ export default function AlertasView() {
       </div>
 
       {/* Resumen por severidad */}
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         {tarjetas.map(({ tipo, txt, cantidad }) => (
           <button
             key={tipo}
@@ -153,7 +153,7 @@ export default function AlertasView() {
       {/* Filtros */}
       <div className="mb-5 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+          <div className="flex min-w-full sm:min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
             <Search size={15} className="text-slate-400" />
             <input
               value={filtros.buscar}
@@ -245,7 +245,7 @@ export default function AlertasView() {
           {alertas.map((a) => (
             <div
               key={a.id}
-              className={`flex flex-wrap items-center gap-4 rounded-xl border border-l-4 border-slate-200 bg-white px-5 py-4 ${
+              className={`flex flex-wrap items-center gap-3 sm:gap-4 rounded-xl border border-l-4 border-slate-200 bg-white px-4 py-3.5 sm:px-5 sm:py-4 ${
                 BORDE_SEVERIDAD[a.tipo] || 'border-l-slate-300'
               } ${a.estado === 'RESUELTA' ? 'opacity-60' : ''}`}
             >
@@ -295,8 +295,8 @@ export default function AlertasView() {
       {!cargando && alertas.length > 0 && (
         <p className="mt-6 flex items-center gap-2 rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-500">
           <Bell size={13} />
-          Umbrales del Product Backlog: aviso a 15, 8 y 1 día de la fecha programada (HU17) y alerta de vencimiento
-          cuando la fecha pasa sin ejecutarse (HU18).
+          Aviso temprano a 30 días y umbrales del Product Backlog a 15, 8 y 1 día de la fecha programada (HU17), y alerta
+          de vencimiento cuando la fecha pasa sin ejecutarse (HU18).
         </p>
       )}
     </Layout>

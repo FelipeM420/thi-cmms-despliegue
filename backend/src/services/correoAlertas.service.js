@@ -442,6 +442,7 @@ const INCLUDE_ALERTA_CORREO = {
 };
 
 const ETIQUETAS_TIPO_ALERTA = {
+  PREVENTIVA_30D: 'Preventiva · 30 días',
   PREVENTIVA_15D: 'Preventiva · 15 días',
   PREVENTIVA_8D: 'Preventiva · 8 días',
   PREVENTIVA_1D: 'Preventiva · 1 día',
@@ -553,7 +554,7 @@ function textoCorreoAlertas({ asunto, intro, filas, restantes, urlPortal }) {
 }
 
 /**
- * Asunto, texto plano y HTML del aviso de alertas preventivas (15/8/1 días) y vencidas.
+ * Asunto, texto plano y HTML del aviso de alertas preventivas (30/15/8/1 días) y vencidas.
  * @param {object} datos { alertas, total?, hoy?, urlPortal? } — alertas con equipo, mantenimientoProgramado.tarea y tecnicoDestino;
  *   total: cuántas se detectaron (puede superar las listadas)
  * @returns {{ asunto: string, texto: string, html: string }}

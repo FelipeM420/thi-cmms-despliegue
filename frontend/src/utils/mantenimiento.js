@@ -63,8 +63,9 @@ export const ESTADOS_ORDEN_TRABAJO = [
   ['CANCELADA', 'Cancelada'],
 ];
 
-// HU17 (preventivas a 15/8/1 dias) y HU18 (vencidas).
+// HU17 (preventivas a 30/15/8/1 dias) y HU18 (vencidas).
 export const TIPOS_ALERTA = [
+  ['PREVENTIVA_30D', 'Preventiva · 30 dias'],
   ['PREVENTIVA_15D', 'Preventiva · 15 dias'],
   ['PREVENTIVA_8D', 'Preventiva · 8 dias'],
   ['PREVENTIVA_1D', 'Preventiva · 1 dia'],

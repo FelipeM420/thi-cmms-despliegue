@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "TipoAlerta" ADD VALUE 'PREVENTIVA_30D';

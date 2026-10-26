@@ -1,4 +1,4 @@
-// HU17 — Motor de alertas preventivas (15, 8 y 1 día de anticipación).
+// HU17 — Motor de alertas preventivas (30, 15, 8 y 1 día de anticipación).
 // HU18 — Alertas de mantenimientos vencidos.
 //
 // El motor es idempotente: la unicidad (mantenimientoProgramado, tipo) del
@@ -128,7 +128,7 @@ async function generarAlertas(prisma, { hoy = new Date() } = {}) {
 }
 
 // OWASP A03:2021 (Prototype Pollution) — el resumen de la campana responde un objeto
-// con un esquema cerrado: siempre las cuatro claves del enum, en cero si no hay
+// con un esquema cerrado: siempre todas las claves del enum, en cero si no hay
 // alertas de ese tipo. Un `tipo` que no esté en el enum (o `__proto__`) se descarta,
 // y el resultado se congela: nadie le agrega ni le cambia claves después.
 const ESQUEMA_ALERTAS_POR_TIPO = Object.freeze(Object.fromEntries(TIPOS_ALERTA.map((tipo) => [tipo, 0])));

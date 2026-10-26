@@ -1,4 +1,4 @@
-// HU17 — Alertas preventivas (15, 8 y 1 día antes de la fecha programada).
+// HU17 — Alertas preventivas (30, 15, 8 y 1 día antes de la fecha programada).
 // HU18 — Alertas de mantenimientos vencidos.
 //
 // El motor vive en src/utils/alertas.js; aquí se expone su ejecución y la

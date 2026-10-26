@@ -116,9 +116,11 @@ enum EstadoOrdenTrabajo {
   CANCELADA
 }
 
-// HU17 — umbrales de anticipación del Product Backlog (15/8/1 días).
+// HU17 — umbrales de anticipación del Product Backlog (15/8/1 días), más el
+// aviso temprano de 30 días.
 // HU18 — VENCIDA para los mantenimientos cuya fecha expiró sin ejecutarse.
 enum TipoAlerta {
+  PREVENTIVA_30D
   PREVENTIVA_15D
   PREVENTIVA_8D
   PREVENTIVA_1D
@@ -535,7 +537,7 @@ model OrdenTrabajo {
   @@map("ordenes_trabajo")
 }
 
-// HU17 — alertas preventivas a 15, 8 y 1 dia de la fecha programada.
+// HU17 — alertas preventivas a 30, 15, 8 y 1 dia de la fecha programada.
 // HU18 — alerta VENCIDA cuando la fecha paso y el mantenimiento sigue sin
 // ejecutarse. La unicidad (mantenimiento, tipo) hace idempotente al motor:
 // re-ejecutarlo no duplica alertas.
@@ -559,7 +561,7 @@ model Alerta {
   mensaje          String
   // Snapshot de la fecha del mantenimiento, para ordenar sin joins.
   fechaProgramada  DateTime
-  // 15, 8 o 1 para las preventivas; nulo para VENCIDA.
+  // 30, 15, 8 o 1 para las preventivas; nulo para VENCIDA.
   diasAnticipacion Int?
 
   leidaEn    DateTime?

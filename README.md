@@ -36,7 +36,7 @@ Diseño y reglas de negocio validados contra el prototipo Figma y el flujo BPMN 
     técnico, insumos consumidos y espacio para firmas y sello (HU15).
   - Historial de órdenes con búsqueda por consecutivo y filtros por estado, equipo,
     técnico y prioridad (HU16).
-  - Motor de alertas preventivas a 15, 8 y 1 día de la fecha programada (HU17).
+  - Motor de alertas preventivas a 30, 15, 8 y 1 día de la fecha programada (HU17).
   - Alertas automáticas de mantenimientos vencidos sin ejecutar (HU18).
   - Centro de alertas con severidad por color, filtros y gestión de leídas/resueltas,
     más el contador de pendientes en la campana del encabezado.

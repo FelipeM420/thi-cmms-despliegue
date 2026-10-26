@@ -33,9 +33,11 @@ test('alertaQueCorresponde no genera ninguna alerta para una fecha inválida', (
   assert.equal(alertaQueCorresponde(undefined, HOY), null);
 });
 
-// HU17 — 15, 8 y 1 día. Con N días restantes corresponde el umbral más ajustado ya cruzado.
+// HU17 — 30, 15, 8 y 1 día. Con N días restantes corresponde el umbral más ajustado ya cruzado.
 const casosPreventivos = [
-  [16, null],
+  [31, null],
+  [30, 'PREVENTIVA_30D'],
+  [16, 'PREVENTIVA_30D'],
   [15, 'PREVENTIVA_15D'],
   [9, 'PREVENTIVA_15D'],
   [8, 'PREVENTIVA_8D'],
@@ -65,6 +67,9 @@ test('alertaQueCorresponde informa diasAnticipacion del umbral aplicado', () => 
   assert.equal(resultado.tipo, 'PREVENTIVA_8D');
   assert.equal(resultado.diasAnticipacion, 8);
   assert.equal(resultado.diasRestantes, 8);
+
+  const temprana = alertaQueCorresponde(programada(2026, 10, 24), HOY);
+  assert.deepEqual(temprana, { tipo: 'PREVENTIVA_30D', diasAnticipacion: 30, diasRestantes: 30 });
 });
 
 const mantenimiento = {
@@ -115,6 +120,7 @@ const fila = (id, fecha, alertas = []) => ({
 test('generarAlertas crea solo las que faltan y resume por tipo', async () => {
   const prisma = prismaFalso([
     fila('lejano', programada(2026, 10, 30)), // 36 días: sin alerta
+    fila('a20', programada(2026, 10, 14)), // 20 días: PREVENTIVA_30D
     fila('a8', programada(2026, 10, 2)), // 8 días: PREVENTIVA_8D
     fila('vencida-nueva', programada(2026, 9, 20)), // VENCIDA
     fila('vencida-ya-alertada', programada(2026, 9, 10), [{ tipo: 'VENCIDA' }]), // se omite
@@ -122,13 +128,13 @@ test('generarAlertas crea solo las que faltan y resume por tipo', async () => {
 
   const resultado = await generarAlertas(prisma, { hoy: HOY });
 
-  assert.equal(resultado.revisados, 4);
-  assert.equal(resultado.generadas, 2);
-  assert.deepEqual(resultado.porTipo, { PREVENTIVA_8D: 1, VENCIDA: 1 });
+  assert.equal(resultado.revisados, 5);
+  assert.equal(resultado.generadas, 3);
+  assert.deepEqual(resultado.porTipo, { PREVENTIVA_30D: 1, PREVENTIVA_8D: 1, VENCIDA: 1 });
 
   const { data, skipDuplicates } = prisma.llamadas.createMany[0];
   assert.equal(skipDuplicates, true);
-  assert.deepEqual(data.map((a) => a.mantenimientoProgramadoId).sort(), ['a8', 'vencida-nueva']);
+  assert.deepEqual(data.map((a) => a.mantenimientoProgramadoId).sort(), ['a20', 'a8', 'vencida-nueva']);
   assert.equal(data.find((a) => a.mantenimientoProgramadoId === 'a8').tecnicoDestinoId, 'tec-1');
   // Las recién creadas viajan al llamador para notificarlas por correo.
   assert.deepEqual(resultado.nuevas, data);
@@ -151,4 +157,14 @@ test('generarAlertas emite la alerta del siguiente umbral cuando la anterior ya 
   const resultado = await generarAlertas(prisma, { hoy: HOY });
 
   assert.deepEqual(resultado.porTipo, { PREVENTIVA_8D: 1 });
+});
+
+test('generarAlertas pasa del aviso de 30 días al de 15 cuando se cruza el umbral', async () => {
+  // Ya tenía la de 30 días; ahora faltan 15 → corresponde PREVENTIVA_15D.
+  const prisma = prismaFalso([fila('m1', programada(2026, 10, 9), [{ tipo: 'PREVENTIVA_30D' }])]);
+
+  const resultado = await generarAlertas(prisma, { hoy: HOY });
+
+  assert.deepEqual(resultado.porTipo, { PREVENTIVA_15D: 1 });
+  assert.equal(prisma.llamadas.createMany[0].data[0].diasAnticipacion, 15);
 });
