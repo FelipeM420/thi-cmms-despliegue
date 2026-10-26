@@ -101,3 +101,9 @@ test('un fallo de la base no se confunde con una sesión inválida: pasa al mane
   assert.match(error.message, /base caída/);
   assert.equal(res.statusCode, null);
 });
+
+test('un token de renovación no sirve como token de acceso aunque se firme con la misma llave', async () => {
+  const { res, siguio } = await ejecutar(`Bearer ${firmar({ sub: 'adm', tipo: 'refresh' })}`);
+  assert.equal(siguio, false);
+  assert.equal(res.statusCode, 401);
+});

@@ -72,7 +72,7 @@ test('al iniciar sesión se emite la cookie de archivos con el mismo JWT y su mi
   assert.equal(valorCookie(respuesta), token);
 
   const maxAge = Number(cookie.match(/Max-Age=(\d+)/)[1]);
-  assert.ok(maxAge > 28700 && maxAge <= 28800, `Max-Age ${maxAge} debe rondar las 8 h`);
+  assert.ok(maxAge > 890 && maxAge <= 900, `Max-Age ${maxAge} debe rondar los 15 min del token de acceso`);
 });
 
 test('con credenciales incorrectas no se emite ninguna cookie', async () => {

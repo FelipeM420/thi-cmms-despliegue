@@ -80,6 +80,16 @@ const limitadorLogin = rateLimit({
   legacyHeaders: false,
 });
 
+// La renovación del token de acceso (cada 15 min por pestaña) tiene su propio
+// contador: compartir el del login agotaría los intentos de quien solo renueva.
+const limitadorRenovacion = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Demasiadas renovaciones de sesión. Intenta de nuevo en unos minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Fotos, manuales y evidencias subidos (disco local, con copia en la base: el disco del
 // hosting gratuito se vacía al reiniciar). Solo con sesión: ver middleware/servidorArchivos.js
 // (Bearer de la API o cookie HttpOnly emitida al iniciar sesión).
@@ -100,6 +110,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth/login', limitadorLogin);
+app.use('/api/auth/refresh', limitadorRenovacion);
 app.use('/api/auth', authRoutes);
 app.use('/api/equipos', equiposRoutes);
 
