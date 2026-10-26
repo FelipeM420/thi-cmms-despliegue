@@ -21,6 +21,7 @@ const {
   notificarOrdenEmitida,
   construirCorreoAlertas,
   notificarAlertasGeneradas,
+  enviarCorreoPorWebhookHttps,
   FIRMA_INSTITUCIONAL,
 } = require('../src/services/correoAlertas.service');
 const { generarPdfOrdenTrabajoBuffer } = require('../src/utils/pdfOrdenTrabajo');
@@ -756,4 +757,182 @@ test('el correo de alertas consulta como mucho 50 filas y cuenta todas las gener
   await notificarAlertasGeneradas(prisma, muchas, { transporte, config: configActiva(), hoy: HOY_ALERTAS, registrar: sinRegistro });
   assert.equal(prisma.consultas[0].take, 50);
   assert.equal(transporte.enviados[0].subject, '[ALERTA CMMS] Se detectaron 60 alertas de mantenimiento preventivo');
+});
+
+// ---------------------------------------------------------------------------
+// Despacho por webhook HTTPS (Apps Script + GmailApp): Render bloquea el SMTP saliente
+// ---------------------------------------------------------------------------
+
+const ENTORNO_WEBHOOK = {
+  CORREO_NOTIFICACIONES_HABILITADO: 'true',
+  CORREO_ADMINISTRADOR_DESTINO: 'admin1@umariana.edu.co, admin2@umariana.edu.co',
+  GOOGLE_DRIVE_WEBHOOK_URL: 'https://script.google.com/macros/s/abc/exec',
+  GOOGLE_DRIVE_TOKEN: 'token-de-prueba',
+};
+
+const configWebhook = (extra = {}) => leerConfiguracionCorreo({ ...ENTORNO_WEBHOOK, ...extra });
+
+const respuestaJson = (cuerpo, status = 200) =>
+  new Response(JSON.stringify(cuerpo), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
+
+/** fetch falso que guarda cada petición y responde lo indicado (o lanza). */
+function fetchEspia(responder = () => respuestaJson({ ok: true, messageId: 'gas-1' })) {
+  const peticiones = [];
+  const fetch = async (url, init) => {
+    peticiones.push({ url, init, cuerpo: JSON.parse(init.body) });
+    return responder(peticiones.length);
+  };
+  return { fetch, peticiones };
+}
+
+test('con GOOGLE_DRIVE_WEBHOOK_URL y su token el correo se habilita por webhook, sin credenciales SMTP', () => {
+  const config = configWebhook();
+  assert.equal(config.habilitado, true);
+  assert.equal(config.canal, 'webhook');
+  assert.deepEqual(config.faltantes, []);
+  assert.deepEqual(config.webhook, { url: 'https://script.google.com/macros/s/abc/exec', token: 'token-de-prueba', timeoutMs: 15000 });
+  assert.equal(config.smtpDisponible, false);
+  // Sin webhook sigue siendo SMTP.
+  assert.equal(configActiva().canal, 'smtp');
+  assert.equal(configActiva().webhook, null);
+  assert.equal(leerConfiguracionCorreo({}).canal, null);
+});
+
+test('un webhook incompleto o sin https no habilita el canal y dice qué falta', () => {
+  const sinToken = configWebhook({ GOOGLE_DRIVE_TOKEN: '' });
+  assert.equal(sinToken.habilitado, false);
+  assert.deepEqual(sinToken.faltantes, ['GOOGLE_DRIVE_TOKEN']);
+  const http = configWebhook({ GOOGLE_DRIVE_WEBHOOK_URL: 'http://script.google.com/x' });
+  assert.deepEqual(http.faltantes, ['GOOGLE_DRIVE_WEBHOOK_URL']);
+  // Con SMTP completo, un webhook roto no impide enviar por SMTP.
+  const conSmtp = leerConfiguracionCorreo({ ...ENTORNO_COMPLETO, GOOGLE_DRIVE_WEBHOOK_URL: 'https://script.google.com/x' });
+  assert.equal(conSmtp.habilitado, true);
+  assert.equal(conSmtp.canal, 'smtp');
+});
+
+test('el transporte SMTP no se crea si el correo solo tiene webhook (queda el simulado)', () => {
+  assert.equal(crearTransporteCorreo({ config: configWebhook(), registrar: sinRegistro }).simulado, true);
+});
+
+test('enviarCorreoPorWebhookHttps hace POST con accion enviar_correo, token y adjuntos en Base64', async () => {
+  const { fetch, peticiones } = fetchEspia();
+  const pdf = Buffer.from('%PDF-1.3 prueba');
+  const info = await enviarCorreoPorWebhookHttps(
+    {
+      para: ['admin1@umariana.edu.co', 'admin2@umariana.edu.co'],
+      asunto: '[ALERTA] Prueba',
+      cuerpoHtml: '<p>Hola</p>',
+      cuerpoTexto: 'Hola',
+      adjuntos: [{ filename: 'OT-2026-0005.pdf', content: pdf, contentType: 'application/pdf' }],
+    },
+    { webhook: configWebhook().webhook, fetch }
+  );
+  assert.deepEqual(info, { messageId: 'gas-1', canal: 'webhook' });
+  const [{ url, init, cuerpo }] = peticiones;
+  assert.equal(url, 'https://script.google.com/macros/s/abc/exec');
+  assert.equal(init.method, 'POST');
+  assert.equal(init.headers['Content-Type'], 'application/json');
+  assert.ok(init.signal instanceof AbortSignal);
+  assert.deepEqual(cuerpo, {
+    accion: 'enviar_correo',
+    token: 'token-de-prueba',
+    para: 'admin1@umariana.edu.co, admin2@umariana.edu.co',
+    asunto: '[ALERTA] Prueba',
+    cuerpoHtml: '<p>Hola</p>',
+    cuerpoTexto: 'Hola',
+    adjuntos: [{ nombre: 'OT-2026-0005.pdf', mimeType: 'application/pdf', contenidoBase64: pdf.toString('base64') }],
+  });
+});
+
+test('el webhook solo cuenta como enviado si el script responde { ok: true }', async () => {
+  const webhook = configWebhook().webhook;
+  const enviar = (responder) => enviarCorreoPorWebhookHttps({ para: 'a@b.co', asunto: 'X' }, { webhook, fetch: fetchEspia(responder).fetch });
+
+  const sinId = await enviar(() => respuestaJson({ ok: true }));
+  assert.equal(sinId.canal, 'webhook');
+  assert.match(sinId.messageId, /^webhook-/);
+  await assert.rejects(enviar(() => respuestaJson({ error: 'No autorizado' })), /rechazó el correo: No autorizado/);
+  await assert.rejects(enviar(() => respuestaJson({ ok: false })), /rechazó el correo: sin detalle/);
+  // Un script sin la acción enviar_correo (versión de la Fase 3) no responde ok.
+  await assert.rejects(enviar(() => respuestaJson({ id: 'archivo-1', url: 'https://drive' })), /rechazó el correo/);
+  await assert.rejects(enviar(() => respuestaJson({}, 500)), /HTTP 500/);
+  await assert.rejects(
+    enviar(() => new Response('<html>Inicia sesión</html>', { status: 200, headers: { 'content-type': 'text/html' } })),
+    /página HTML/
+  );
+  await assert.rejects(enviar(() => new Response('no es json', { status: 200 })), /rechazó el correo/);
+});
+
+test('con webhook, la OT sale por HTTPS con su PDF y no toca el SMTP', async () => {
+  const { fetch, peticiones } = fetchEspia();
+  const transporte = transporteEspia();
+  const registros = [];
+  const pdfBuffer = Buffer.from('%PDF-1.3 prueba');
+  const resultado = await notificarOrdenTrabajoConPdf(
+    { ordenTrabajo: ordenBase(), equipo: ordenBase().equipo, pdfBuffer },
+    { transporte, fetch, config: configWebhook(), registrar: (m) => registros.push(m), registrarError: sinRegistro }
+  );
+  assert.deepEqual(resultado, { enviado: true, simulado: false, messageId: 'gas-1' });
+  assert.equal(transporte.enviados.length, 0);
+  const { cuerpo } = peticiones[0];
+  assert.equal(cuerpo.asunto, '[ALERTA] Nueva OT generada: OT-2026-0005 — BV-11');
+  assert.equal(cuerpo.para, 'admin1@umariana.edu.co, admin2@umariana.edu.co');
+  assert.deepEqual(cuerpo.adjuntos, [{ nombre: 'OT-2026-0005.pdf', mimeType: 'application/pdf', contenidoBase64: pdfBuffer.toString('base64') }]);
+  assert.ok(cuerpo.cuerpoHtml.includes('OT-2026-0005') && cuerpo.cuerpoTexto.includes('OT-2026-0005'));
+  assert.ok(registros.includes('[CORREO] Notificación de la OT OT-2026-0005 enviada con éxito (ID: gas-1) vía webhook HTTPS'));
+});
+
+test('si el webhook falla y hay SMTP configurado, se intenta por SMTP', async () => {
+  const { fetch } = fetchEspia(() => respuestaJson({ error: 'No autorizado' }));
+  const transporte = transporteEspia();
+  const registros = [];
+  const config = leerConfiguracionCorreo({ ...ENTORNO_COMPLETO, ...ENTORNO_WEBHOOK });
+  const resultado = await notificarOrdenTrabajoConPdf(
+    { ordenTrabajo: ordenBase(), equipo: ordenBase().equipo },
+    { transporte, fetch, config, registrar: (m) => registros.push(m), registrarError: sinRegistro }
+  );
+  assert.equal(resultado.enviado, true);
+  assert.equal(transporte.enviados.length, 1);
+  assert.ok(registros.some((m) => /^\[CORREO\] El webhook HTTPS falló \(.*No autorizado\); se intenta por SMTP\.$/.test(m)));
+});
+
+test('si el webhook falla (o se agota el tiempo) y no hay SMTP, se registra sin propagar', async () => {
+  const errores = [];
+  const { fetch } = fetchEspia(() => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); });
+  const transporte = transporteEspia();
+  const resultado = await notificarOrdenTrabajoConPdf(
+    { ordenTrabajo: ordenBase(), equipo: ordenBase().equipo },
+    { transporte, fetch, config: configWebhook(), registrar: sinRegistro, registrarError: (m, e) => errores.push([m, e.message]) }
+  );
+  assert.equal(resultado.enviado, false);
+  assert.match(resultado.error, /timeout/);
+  assert.equal(transporte.enviados.length, 0);
+  assert.match(errores[0][0], /OT-2026-0005/);
+});
+
+test('con webhook, las alertas salen por HTTPS: un POST a los administradores y uno por técnico', async () => {
+  const { fetch, peticiones } = fetchEspia((n) => respuestaJson({ ok: true, messageId: `gas-${n}` }));
+  const registros = [];
+  const resultado = await notificarAlertasGeneradas(prismaAlertas(), generadas, {
+    fetch, transporte: transporteEspia(), config: configWebhook(), hoy: HOY_ALERTAS, registrar: (m) => registros.push(m), registrarError: sinRegistro,
+  });
+  assert.deepEqual(resultado, { enviado: true, enviados: 3, fallidos: 0 });
+  assert.deepEqual(peticiones.map((p) => p.cuerpo.para), [
+    'admin1@umariana.edu.co, admin2@umariana.edu.co',
+    'carlos.mendoza@thi.com.co',
+    'juan.perez@thi.com.co',
+  ]);
+  assert.ok(peticiones.every((p) => p.cuerpo.accion === 'enviar_correo' && p.cuerpo.adjuntos.length === 0));
+  assert.ok(peticiones[0].cuerpo.cuerpoHtml.includes('Tipo de Alerta'));
+  assert.ok(registros.includes('[CORREO] Notificación de alerta enviada con éxito (ID: gas-3) vía webhook HTTPS'));
+});
+
+test('un webhook que rechaza el correo de alertas cuenta como fallido sin propagar', async () => {
+  const errores = [];
+  const { fetch } = fetchEspia(() => respuestaJson({ error: 'Service invoked too many times for one day: email.' }));
+  const resultado = await notificarAlertasGeneradas(prismaAlertas(), generadas, {
+    fetch, config: configWebhook(), hoy: HOY_ALERTAS, registrar: sinRegistro, registrarError: (m, e) => errores.push(e.message),
+  });
+  assert.deepEqual(resultado, { enviado: false, enviados: 0, fallidos: 3 });
+  assert.ok(errores.every((m) => /too many times/.test(m)));
 });

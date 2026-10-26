@@ -27,7 +27,10 @@ const registrarErrorPorDefecto = (mensaje, error) => console.error(`${mensaje}:`
 // Cada envío deja su rastro "[CORREO] ..." en la consola: es lo que se audita en los logs de Render.
 const registrarPorDefecto = (mensaje) => console.log(mensaje);
 
-const sufijoSimulado = (info) => (info?.simulado ? ' [simulado: SMTP no configurado, no salió del servidor]' : '');
+function sufijoCanal(info) {
+  if (info?.simulado) return ' [simulado: correo no configurado, no salió del servidor]';
+  return info?.canal === 'webhook' ? ' vía webhook HTTPS' : '';
+}
 
 // --- Formato ----------------------------------------------------------------
 
@@ -177,36 +180,104 @@ function construirCorreoOrdenTrabajo({ ordenTrabajo, equipo, ejecucion = null, a
 
 // --- Envío ------------------------------------------------------------------
 
+/** Adjunto de nodemailer ({ filename, content, contentType }) en el formato del Apps Script. */
+const serializarAdjunto = ({ filename, content, contentType }) => ({
+  nombre: filename,
+  mimeType: contentType || 'application/octet-stream',
+  contenidoBase64: Buffer.isBuffer(content) ? content.toString('base64') : Buffer.from(String(content ?? '')).toString('base64'),
+});
+
+/** Interpreta la respuesta del Apps Script: lanza si no confirmó el envío con { ok: true }. */
+async function leerRespuestaWebhook(respuesta) {
+  if (!respuesta.ok) throw new Error(`El webhook de correo respondió HTTP ${respuesta.status}`);
+  // Un script mal desplegado (o sin acceso público) devuelve una página HTML de Google con 200.
+  if ((respuesta.headers.get('content-type') || '').includes('text/html')) {
+    throw new Error('El webhook de correo respondió una página HTML (¿despliegue o permisos del script?)');
+  }
+  let cuerpo = null;
+  try {
+    cuerpo = JSON.parse(await respuesta.text());
+  } catch {
+    cuerpo = null;
+  }
+  // Un script sin la acción enviar_correo (el de la Fase 3) guardaría el cuerpo como archivo: no es un envío.
+  if (cuerpo?.ok !== true) {
+    throw new Error(`El webhook rechazó el correo: ${String(cuerpo?.error || cuerpo?.mensaje || 'sin detalle').slice(0, 200)}`);
+  }
+  return cuerpo;
+}
+
+/**
+ * Envía un correo por el Apps Script (GmailApp) con un POST HTTPS: el puerto 443
+ * no lo bloquea Render, a diferencia del SMTP. Lanza si el script no confirma.
+ * @param {object} correo { para, asunto, cuerpoHtml, cuerpoTexto, adjuntos } — adjuntos en formato nodemailer
+ * @param {object} opciones { webhook: { url, token, timeoutMs }, fetch? }
+ * @returns {Promise<{ messageId: string, canal: 'webhook' }>}
+ */
+async function enviarCorreoPorWebhookHttps({ para, asunto, cuerpoHtml, cuerpoTexto, adjuntos = [] }, { webhook, fetch = globalThis.fetch }) {
+  const respuesta = await fetch(webhook.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // Apps Script no expone los encabezados de la petición: el token va en el cuerpo.
+    body: JSON.stringify({
+      accion: 'enviar_correo',
+      token: webhook.token,
+      para: [].concat(para || []).join(', '),
+      asunto,
+      cuerpoHtml,
+      cuerpoTexto,
+      adjuntos: (adjuntos || []).map(serializarAdjunto),
+    }),
+    signal: AbortSignal.timeout(webhook.timeoutMs),
+  });
+  const cuerpo = await leerRespuestaWebhook(respuesta);
+  return { messageId: cuerpo.messageId || `webhook-${Date.now()}`, canal: 'webhook' };
+}
+
+/**
+ * Despacha un correo (formato nodemailer) por el canal configurado: el webhook
+ * HTTPS primero y, si falla y hay credenciales, SMTP. Lanza si ninguno lo envía.
+ * Ni la URL del script ni el token llegan al log: solo el mensaje del error.
+ */
+async function despacharCorreo(mensaje, { config, transporte, fetch, registrar }) {
+  if (config.canal === 'webhook') {
+    try {
+      return await enviarCorreoPorWebhookHttps(
+        { para: mensaje.to, asunto: mensaje.subject, cuerpoHtml: mensaje.html, cuerpoTexto: mensaje.text, adjuntos: mensaje.attachments },
+        { webhook: config.webhook, fetch }
+      );
+    } catch (error) {
+      if (!config.smtpDisponible) throw error;
+      registrar(`[CORREO] El webhook HTTPS falló (${error?.message || error}); se intenta por SMTP.`);
+    }
+  }
+  const mailer = transporte || obtenerTransporteCorreo();
+  return mailer.sendMail(mensaje);
+}
+
 /**
  * Envía la notificación de una OT con su PDF adjunto. Nunca rechaza.
  * @param {object} datos { ordenTrabajo, equipo, ejecucion?, alertas?, pdfBuffer? }
- * @param {object} [opciones] { transporte, config, registrar, registrarError } (inyectables en pruebas)
+ * @param {object} [opciones] { transporte, fetch, config, registrar, registrarError } (inyectables en pruebas)
  * @returns {Promise<{ enviado: boolean, simulado?: boolean, messageId?: string, error?: string }>}
  */
 function notificarOrdenTrabajoConPdf(
   { ordenTrabajo, equipo, ejecucion = null, alertas = [], pdfBuffer },
-  { transporte, config, registrar = registrarPorDefecto, registrarError = registrarErrorPorDefecto } = {}
+  { transporte, fetch, config, registrar = registrarPorDefecto, registrarError = registrarErrorPorDefecto } = {}
 ) {
   return Promise.resolve()
     .then(() => {
       const ajustes = config || obtenerConfiguracionCorreo();
-      const mailer = transporte || obtenerTransporteCorreo();
       const correo = construirCorreoOrdenTrabajo({ ordenTrabajo, equipo, ejecucion, alertas });
       const attachments = pdfBuffer
         ? [{ filename: correo.nombrePdf, content: pdfBuffer, contentType: 'application/pdf' }]
         : [];
       registrar(`[CORREO] Enviando la OT ${ordenTrabajo.consecutivo} a: ${[].concat(ajustes.destinatarios).join(', ')}`);
-      return mailer.sendMail({
-        from: ajustes.remitente,
-        to: ajustes.destinatarios,
-        subject: correo.asunto,
-        text: correo.texto,
-        html: correo.html,
-        attachments,
-      });
+      const mensaje = { from: ajustes.remitente, to: ajustes.destinatarios, subject: correo.asunto, text: correo.texto, html: correo.html, attachments };
+      return despacharCorreo(mensaje, { config: ajustes, transporte, fetch, registrar });
     })
     .then((info) => {
-      registrar(`[CORREO] Notificación de la OT ${ordenTrabajo.consecutivo} enviada con éxito (ID: ${info?.messageId})${sufijoSimulado(info)}`);
+      registrar(`[CORREO] Notificación de la OT ${ordenTrabajo.consecutivo} enviada con éxito (ID: ${info?.messageId})${sufijoCanal(info)}`);
       return { enviado: true, simulado: Boolean(info?.simulado), messageId: info?.messageId };
     })
     .catch((error) => {
@@ -506,11 +577,11 @@ function construirCorreoAlertas({ alertas, total = alertas.length, hoy = new Dat
 }
 
 /** Envía un correo y deja el rastro en el log. Nunca rechaza. */
-async function enviarYRegistrar(mailer, mensaje, { registrar, registrarError }) {
+async function enviarYRegistrar(mensaje, { config, transporte, fetch, registrar, registrarError }) {
   registrar(`[CORREO] Enviando alerta(s) de mantenimiento a: ${[].concat(mensaje.to).join(', ')}`);
   try {
-    const info = await mailer.sendMail(mensaje);
-    registrar(`[CORREO] Notificación de alerta enviada con éxito (ID: ${info?.messageId})${sufijoSimulado(info)}`);
+    const info = await despacharCorreo(mensaje, { config, transporte, fetch, registrar });
+    registrar(`[CORREO] Notificación de alerta enviada con éxito (ID: ${info?.messageId})${sufijoCanal(info)}`);
     return true;
   } catch (error) {
     registrarError('[CORREO] Error al enviar alerta', error);
@@ -541,7 +612,7 @@ function alertasPorTecnico(alertas, destinatariosAdmin) {
  * las suyas. Se llama SIN await (botón "Generar alertas" y motor de 12 h). Nunca rechaza.
  * @param {object} prisma
  * @param {object[]} alertasGeneradas `nuevas` de generarAlertas ({ mantenimientoProgramadoId, tipo, ... })
- * @param {object} [opciones] { transporte, config, hoy, registrar, registrarError }
+ * @param {object} [opciones] { transporte, fetch, config, hoy, registrar, registrarError }
  * @returns {Promise<{ enviado: boolean, enviados?: number, fallidos?: number, motivo?: string, error?: string }>}
  */
 function notificarAlertasGeneradas(prisma, alertasGeneradas, opciones = {}) {
@@ -567,7 +638,7 @@ function notificarAlertasGeneradas(prisma, alertasGeneradas, opciones = {}) {
     });
     if (alertas.length === 0) return { enviado: false, motivo: 'SIN_ALERTAS' };
 
-    const mailer = opciones.transporte || obtenerTransporteCorreo();
+    const despacho = { config, transporte: opciones.transporte, fetch: opciones.fetch, registrar, registrarError };
     const comunes = { hoy: opciones.hoy || new Date(), urlPortal: config.urlPortal };
     const envios = [{ to: config.destinatarios, correo: construirCorreoAlertas({ alertas, total: claves.length, ...comunes }) }];
     for (const [email, propias] of alertasPorTecnico(alertas, config.destinatarios)) {
@@ -577,7 +648,7 @@ function notificarAlertasGeneradas(prisma, alertasGeneradas, opciones = {}) {
     let enviados = 0;
     for (const { to, correo } of envios) {
       const mensaje = { from: config.remitente, to, subject: correo.asunto, text: correo.texto, html: correo.html };
-      if (await enviarYRegistrar(mailer, mensaje, { registrar, registrarError })) enviados += 1;
+      if (await enviarYRegistrar(mensaje, despacho)) enviados += 1;
     }
     return { enviado: enviados > 0, enviados, fallidos: envios.length - enviados };
   }, registrarError);
@@ -597,5 +668,6 @@ module.exports = {
   notificarOrdenEmitida,
   construirCorreoAlertas,
   notificarAlertasGeneradas,
+  enviarCorreoPorWebhookHttps,
   FIRMA_INSTITUCIONAL,
 };

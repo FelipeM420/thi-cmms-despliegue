@@ -1,9 +1,15 @@
 // Fase 1 (ecosistema Google) — Configuración del correo de notificaciones.
 //
-// Las alertas de OT salen por SMTP (Gmail con contraseña de aplicación). Si el
-// envío no está habilitado o faltan credenciales, se usa un transporte SIMULADO
-// que no conecta a nada: el sistema sigue funcionando en local, en pruebas y en
-// un despliegue sin correo configurado, sin lanzar excepciones.
+// Dos canales. Si GOOGLE_DRIVE_WEBHOOK_URL y GOOGLE_DRIVE_TOKEN están configurados,
+// el correo sale por el mismo Apps Script de la Fase 3 (POST HTTPS al puerto 443,
+// GmailApp.sendEmail): Render bloquea el SMTP saliente (25/465/587) en su plan
+// gratuito. Si no, sale por SMTP (Gmail con contraseña de aplicación), que también
+// es el respaldo cuando el webhook falla. Si el envío no está habilitado o no hay
+// ningún canal completo, se usa un transporte SIMULADO que no conecta a nada: el
+// sistema sigue funcionando en local, en pruebas y en un despliegue sin correo
+// configurado, sin lanzar excepciones.
+
+const { obtenerConfiguracionDrive } = require('./drive');
 
 const SMTP_HOST_POR_DEFECTO = 'smtp.gmail.com';
 const SMTP_PORT_POR_DEFECTO = 465;
@@ -50,15 +56,31 @@ function leerConfiguracionCorreo(env = process.env) {
   const destinatarios = listaCorreos(env.CORREO_ADMINISTRADOR_DESTINO);
   const solicitado = booleano(env.CORREO_NOTIFICACIONES_HABILITADO);
 
+  // El webhook no depende de GOOGLE_DRIVE_BACKUP_HABILITADO: basta con la URL https y el token.
+  const drive = obtenerConfiguracionDrive(env);
+  const webhook = drive.faltantes.length === 0 ? { url: drive.webhookUrl, token: drive.token, timeoutMs: drive.timeoutMs } : null;
+  const smtpDisponible = Boolean(usuario && clave);
+
   const faltantes = [];
-  if (!usuario) faltantes.push('SMTP_USER');
-  if (!clave) faltantes.push('SMTP_PASS');
+  if (!webhook && !smtpDisponible) {
+    // Con la URL del webhook puesta, lo que falta es completarlo (no el SMTP).
+    if (drive.webhookUrl) faltantes.push(...drive.faltantes);
+    else {
+      if (!usuario) faltantes.push('SMTP_USER');
+      if (!clave) faltantes.push('SMTP_PASS');
+    }
+  }
   if (destinatarios.length === 0) faltantes.push('CORREO_ADMINISTRADOR_DESTINO');
+  const habilitado = solicitado && faltantes.length === 0;
 
   return {
-    habilitado: solicitado && faltantes.length === 0,
+    habilitado,
     solicitado,
     faltantes,
+    // Canal primario: 'webhook' (HTTPS), 'smtp' o null si el correo no está habilitado.
+    canal: habilitado ? (webhook ? 'webhook' : 'smtp') : null,
+    webhook,
+    smtpDisponible,
     host: texto(env.SMTP_HOST) || SMTP_HOST_POR_DEFECTO,
     puerto,
     // 465 es TLS directo; 587 negocia STARTTLS (secure: false).
@@ -104,8 +126,9 @@ function crearTransporteSimulado({ depuracion = false, registrar = console.log }
  * @param {Function} [opciones.registrar] destino de los mensajes de depuración
  */
 function crearTransporteCorreo({ config = leerConfiguracionCorreo(), nodemailer, registrar = console.log } = {}) {
-  if (!config.habilitado) {
-    if (config.solicitado && config.depuracion) {
+  // Sin credenciales SMTP (correo solo por webhook) no hay transporte real que crear.
+  if (!config.habilitado || config.smtpDisponible === false) {
+    if (config.solicitado && config.depuracion && !config.habilitado) {
       registrar(`[correo] Notificaciones solicitadas pero faltan: ${config.faltantes.join(', ')}. Se usa el modo simulado.`);
     }
     return crearTransporteSimulado({ depuracion: config.depuracion, registrar });
