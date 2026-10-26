@@ -22,6 +22,15 @@ function listaCorreos(valor) {
     .filter(Boolean);
 }
 
+/** Primera URL http(s) de FRONTEND_URL (admite una lista), sin barra final: el enlace al portal en los correos. */
+function primeraUrlPortal(valor) {
+  const url = texto(valor)
+    .split(',')
+    .map((u) => u.trim())
+    .find((u) => /^https?:\/\/[^\s"'<>]+$/i.test(u));
+  return url ? url.replace(/\/+$/, '') : null;
+}
+
 /** Monto en pesos o null si no se configuró uno válido y positivo. */
 function montoOpcional(valor) {
   const numero = Number(texto(valor).replace(/[\s$.]/g, '').replace(',', '.'));
@@ -59,6 +68,7 @@ function leerConfiguracionCorreo(env = process.env) {
     remitente: texto(env.CORREO_REMITENTE) || (usuario ? `"THI-CMMS Notificaciones" <${usuario}>` : 'THI-CMMS <no-responder@localhost>'),
     destinatarios,
     umbralCosto: montoOpcional(env.CORREO_UMBRAL_COSTO),
+    urlPortal: primeraUrlPortal(env.FRONTEND_URL),
     depuracion: booleano(env.CORREO_DEPURACION),
   };
 }

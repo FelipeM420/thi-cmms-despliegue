@@ -8,6 +8,7 @@ const prisma = require('../config/prisma');
 const { TIPOS_ALERTA, ESTADOS_ALERTA } = require('../utils/enums');
 const { textoOpc, fechaOpc, enumOpc } = require('../utils/consultas');
 const { generarAlertas, contarPorTipo } = require('../utils/alertas');
+const { notificarAlertasGeneradas } = require('../services/correoAlertas.service');
 
 const filtrosSchema = z.object({
   buscar: textoOpc,
@@ -110,7 +111,9 @@ async function resumen(req, res) {
 // Idempotente: re-ejecutarlo no duplica alertas.
 async function generar(req, res) {
   try {
-    const resultado = await generarAlertas(prisma);
+    const { nuevas, ...resultado } = await generarAlertas(prisma);
+    // Aviso por correo de las recién creadas, en segundo plano (sin await; nunca rechaza).
+    if (nuevas.length > 0) notificarAlertasGeneradas(prisma, nuevas);
     return res.status(201).json(resultado);
   } catch (error) {
     console.error('Error al generar alertas:', error);

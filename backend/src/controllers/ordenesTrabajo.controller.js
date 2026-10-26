@@ -12,6 +12,7 @@ const { generarPdfOrdenTrabajo } = require('../utils/pdfOrdenTrabajo');
 const { generarOrdenesAutomaticas } = require('../utils/ordenesAutomaticas');
 const { registrarEventoSistema } = require('../middleware/auditoria');
 const { respaldarOrdenTrabajoEnDrive } = require('../services/googleDriveRespaldo.service');
+const { notificarOrdenEmitida } = require('../services/correoAlertas.service');
 const { asyncHandler } = require('../middleware/manejoErrores');
 const {
   emitirConConsecutivo,
@@ -253,6 +254,9 @@ async function crear(req, res) {
     );
     // Fase 3 — el PDF de la OT recién emitida a Google Drive, en segundo plano (sin await).
     respaldarOrdenTrabajoEnDrive(prisma, { id: orden.id }, { sufijo: 'emitida' });
+    // Fase 1 — correo a los administradores con la OT en PDF, también en segundo plano.
+    console.log(`[CORREO] OT ${orden.consecutivo} emitida: notificación por correo en cola.`);
+    notificarOrdenEmitida(prisma, { id: orden.id });
     return res.status(201).json(orden);
   } catch (error) {
     // El mantenimiento ya tiene OT (otra emisión ganó la carrera): conflicto, no fallo interno.

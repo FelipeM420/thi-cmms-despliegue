@@ -24,6 +24,7 @@ const { crearLimitadorEscrituras, crearLimitadorArchivos } = require('./middlewa
 const { directorioUploads } = require('./config/uploads');
 const prisma = require('./config/prisma');
 const { generarAlertas } = require('./utils/alertas');
+const { notificarAlertasGeneradas } = require('./services/correoAlertas.service');
 const { generarOrdenesAutomaticas } = require('./utils/ordenesAutomaticas');
 const { validarSecretosDelEntorno } = require('./config/secretoJwt');
 const { crearCifradoPayload } = require('./middleware/cifradoPayload.middleware');
@@ -188,9 +189,11 @@ async function ejecutarMotorDeOrdenes() {
 
 async function ejecutarMotorDeAlertas() {
   try {
-    const { generadas, revisados } = await generarAlertas(prisma);
+    const { generadas, revisados, nuevas } = await generarAlertas(prisma);
     if (generadas > 0) {
       console.log(`Motor de alertas: ${generadas} alerta(s) generada(s) de ${revisados} mantenimientos revisados.`);
+      // Correo en segundo plano: un SMTP caído queda en el log y no detiene el motor.
+      notificarAlertasGeneradas(prisma, nuevas);
     }
   } catch (error) {
     // Un fallo del motor no debe tumbar el servidor: se reintenta al

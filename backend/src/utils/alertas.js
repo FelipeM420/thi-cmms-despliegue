@@ -79,7 +79,8 @@ function redactarMensaje({ tipo, diasRestantes }, mantenimiento) {
  *
  * @param {import('@prisma/client').PrismaClient} prisma
  * @param {{ hoy?: Date }} opciones
- * @returns {Promise<{ generadas: number, porTipo: Record<string, number>, revisados: number }>}
+ * @returns {Promise<{ generadas: number, porTipo: Record<string, number>, revisados: number, nuevas: object[] }>}
+ *   `nuevas`: las filas recién insertadas (sin id: `createMany` no lo devuelve), para notificarlas por correo.
  */
 async function generarAlertas(prisma, { hoy = new Date() } = {}) {
   const mantenimientos = await prisma.mantenimientoProgramado.findMany({
@@ -123,7 +124,7 @@ async function generarAlertas(prisma, { hoy = new Date() } = {}) {
     return acc;
   }, {});
 
-  return { generadas: nuevas.length, porTipo, revisados: mantenimientos.length };
+  return { generadas: nuevas.length, porTipo, revisados: mantenimientos.length, nuevas };
 }
 
 // OWASP A03:2021 (Prototype Pollution) — el resumen de la campana responde un objeto

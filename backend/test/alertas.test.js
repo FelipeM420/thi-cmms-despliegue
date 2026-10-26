@@ -130,6 +130,8 @@ test('generarAlertas crea solo las que faltan y resume por tipo', async () => {
   assert.equal(skipDuplicates, true);
   assert.deepEqual(data.map((a) => a.mantenimientoProgramadoId).sort(), ['a8', 'vencida-nueva']);
   assert.equal(data.find((a) => a.mantenimientoProgramadoId === 'a8').tecnicoDestinoId, 'tec-1');
+  // Las recién creadas viajan al llamador para notificarlas por correo.
+  assert.deepEqual(resultado.nuevas, data);
 });
 
 test('generarAlertas es idempotente: con todo ya alertado no escribe nada', async () => {
@@ -138,6 +140,7 @@ test('generarAlertas es idempotente: con todo ya alertado no escribe nada', asyn
   const resultado = await generarAlertas(prisma, { hoy: HOY });
 
   assert.equal(resultado.generadas, 0);
+  assert.deepEqual(resultado.nuevas, []);
   assert.equal(prisma.llamadas.createMany.length, 0);
 });
 
