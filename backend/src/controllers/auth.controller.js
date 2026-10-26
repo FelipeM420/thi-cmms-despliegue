@@ -45,6 +45,7 @@ const usuarioPublico = (usuario) => ({
 // de renovación (7 días). El de renovación va en una cookie HttpOnly y también en el
 // cuerpo: Vercel y Render son sitios distintos y Safari o el modo incógnito de Chrome
 // bloquean las cookies de terceros; sin esa copia, la sesión moriría a los 15 minutos.
+// El cuerpo viaja cifrado (middleware/cifradoPayload.middleware.js).
 function emitirSesion(res, usuario) {
   const token = firmarAcceso(usuario);
   const refreshToken = firmarRenovacion(usuario);

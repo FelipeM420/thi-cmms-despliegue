@@ -21,6 +21,8 @@ const VALORES_DE_EJEMPLO = new Set([
   'changeme',
   'cambiaesto',
   'cambiaestoporunsecretolargo',
+  'cambiaestoporotrallavelarga',
+  'otrosecretolargoyaleatorio',
   'tusecreto',
   'jwtsecret',
   'password',
@@ -86,37 +88,72 @@ function esPredecible(texto) {
 /**
  * Valida el secreto de firma de los JWT.
  * @param {string|undefined} secreto valor de process.env.JWT_SECRET
- * @param {{ huellasComprometidas?: Set<string> }} [opciones] permite inyectar la lista en pruebas
+ * @param {{ huellasComprometidas?: Set<string>, nombre?: string }} [opciones] lista inyectable en pruebas
+ *   y nombre de la variable para los mensajes (la misma regla vale para los demás secretos)
  * @returns {{ valido: true } | { valido: false, motivo: string }}
  */
-function validarSecretoJwt(secreto, { huellasComprometidas = HUELLAS_COMPROMETIDAS } = {}) {
+function validarSecretoJwt(secreto, { huellasComprometidas = HUELLAS_COMPROMETIDAS, nombre = 'JWT_SECRET' } = {}) {
   if (typeof secreto !== 'string' || secreto.trim() === '') {
-    return { valido: false, motivo: 'JWT_SECRET no está configurado.' };
+    return { valido: false, motivo: `${nombre} no está configurado.` };
   }
   const limpio = sinEnvoltorio(secreto);
   // Primero el filtrado: es el caso más grave y su mensaje debe ser inequívoco.
   if (huellasComprometidas.has(huella(secreto)) || huellasComprometidas.has(huella(limpio))) {
     return {
       valido: false,
-      motivo: 'JWT_SECRET es un secreto que estuvo publicado en el repositorio; debe rotarse por uno nuevo.',
+      motivo: `${nombre} es un secreto que estuvo publicado en el repositorio; debe rotarse por uno nuevo.`,
     };
   }
   if (limpio.length < LONGITUD_MINIMA) {
-    return { valido: false, motivo: `JWT_SECRET es demasiado corto (mínimo ${LONGITUD_MINIMA} caracteres).` };
+    return { valido: false, motivo: `${nombre} es demasiado corto (mínimo ${LONGITUD_MINIMA} caracteres).` };
   }
   if (VALORES_DE_EJEMPLO.has(normalizar(limpio))) {
-    return { valido: false, motivo: 'JWT_SECRET es un valor de ejemplo; genera uno propio.' };
+    return { valido: false, motivo: `${nombre} es un valor de ejemplo; genera uno propio.` };
   }
   if (new Set(limpio).size < CARACTERES_DISTINTOS_MINIMOS) {
-    return { valido: false, motivo: 'JWT_SECRET tiene muy poca variedad de caracteres (repetido o con un patrón trivial).' };
+    return { valido: false, motivo: `${nombre} tiene muy poca variedad de caracteres (repetido o con un patrón trivial).` };
   }
   if (esPredecible(limpio)) {
     return {
       valido: false,
-      motivo: 'JWT_SECRET es predecible (un fragmento repetido, una secuencia o una frase legible); genera uno aleatorio.',
+      motivo: `${nombre} es predecible (un fragmento repetido, una secuencia o una frase legible); genera uno aleatorio.`,
     };
   }
   return { valido: true };
 }
 
-module.exports = { validarSecretoJwt, huella, HUELLAS_COMPROMETIDAS, LONGITUD_MINIMA };
+
+/**
+ * Valida al arrancar todos los secretos del entorno (fail-fast):
+ *   - JWT_SECRET firma los tokens de acceso (15 min).
+ *   - JWT_REFRESH_SECRET (opcional) firma los de renovación; sin él se deriva de JWT_SECRET.
+ *   - PAYLOAD_ENCRYPTION_KEY cifra los cuerpos JSON (utils/cifradoPayload.js). Esa llave
+ *     también viaja en el bundle del frontend, así que es pública para quien lo estudie:
+ *     si coincidiera con un secreto JWT, cualquiera podría fabricar tokens de administrador.
+ * @returns {{ valido: true } | { valido: false, motivo: string }} el primer problema encontrado
+ */
+function validarSecretosDelEntorno(env = process.env, opciones = {}) {
+  const comprobaciones = [['JWT_SECRET', env.JWT_SECRET]];
+  if (env.JWT_REFRESH_SECRET !== undefined) comprobaciones.push(['JWT_REFRESH_SECRET', env.JWT_REFRESH_SECRET]);
+  comprobaciones.push(['PAYLOAD_ENCRYPTION_KEY', env.PAYLOAD_ENCRYPTION_KEY]);
+
+  for (const [nombre, valor] of comprobaciones) {
+    const resultado = validarSecretoJwt(valor, { ...opciones, nombre });
+    if (!resultado.valido) return resultado;
+  }
+
+  const limpio = (valor) => (typeof valor === 'string' ? sinEnvoltorio(valor) : valor);
+  const llavePayload = limpio(env.PAYLOAD_ENCRYPTION_KEY);
+  if (llavePayload === limpio(env.JWT_SECRET) || llavePayload === limpio(env.JWT_REFRESH_SECRET)) {
+    return {
+      valido: false,
+      motivo: 'PAYLOAD_ENCRYPTION_KEY no puede ser igual a un secreto JWT: el frontend la publica en su bundle.',
+    };
+  }
+  if (env.JWT_REFRESH_SECRET !== undefined && limpio(env.JWT_REFRESH_SECRET) === limpio(env.JWT_SECRET)) {
+    return { valido: false, motivo: 'JWT_REFRESH_SECRET debe ser distinto de JWT_SECRET.' };
+  }
+  return { valido: true };
+}
+
+module.exports = { validarSecretoJwt, validarSecretosDelEntorno, huella, HUELLAS_COMPROMETIDAS, LONGITUD_MINIMA };

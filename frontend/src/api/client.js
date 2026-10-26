@@ -1,9 +1,14 @@
 import axios from 'axios';
+import { cifrarPayloadCliente, descifrarPayloadCliente, esPayloadCifrado } from '../utils/cifradoPayload';
 
 // En desarrollo Vite reenvía /api al backend local. En producción Vercel y
 // Render viven en dominios distintos, por eso la URL pública del backend se
 // entrega durante el build mediante VITE_API_URL.
 const origenApi = import.meta.env.VITE_API_URL?.replace(/\/$/, '');
+
+// OWASP A02:2021 / Ley 1581 — llave del cifrado de payloads (la misma que
+// PAYLOAD_ENCRYPTION_KEY del backend). vite.config.js no deja compilar sin ella.
+const LLAVE_PAYLOAD = import.meta.env.VITE_PAYLOAD_ENCRYPTION_KEY;
 
 const client = axios.create({
   baseURL: origenApi ? `${origenApi}/api` : '/api',
@@ -40,13 +45,26 @@ function normalizarUrlsDeArchivos(valor) {
   return valor;
 }
 
+// Blobs (archivos, PDF, CSV) no pasan por el cifrado: no son JSON.
+const esperaJson = (config) => !config.responseType || config.responseType === 'json';
+// Subidas multipart (fotos, PDF) se envían tal cual: el servidor valida sus bytes.
+const cuerpoCifrable = (datos) => datos !== undefined && datos !== null && !(datos instanceof FormData);
 // Estas rutas no se reintentan con una renovación: son las que la gestionan.
 const esRutaDeSesion = (url = '') => /\/auth\/(login|refresh|logout)$/.test(url);
 
-// HU24 — cada request autenticado lleva el token.
-client.interceptors.request.use((config) => {
+// HU24 — cada request autenticado lleva el token; los cuerpos JSON viajan
+// cifrados y se pide la respuesta cifrada (X-Cifrado-Payload: 1).
+client.interceptors.request.use(async (config) => {
   const token = localStorage.getItem(CLAVE_TOKEN);
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (!LLAVE_PAYLOAD || !esperaJson(config)) return config;
+
+  config.headers['X-Cifrado-Payload'] = '1';
+  // Un reintento tras renovar la sesión ya lleva el cuerpo cifrado: no se cifra dos veces.
+  if (!config._cuerpoCifrado && cuerpoCifrable(config.data)) {
+    config.data = { payload: await cifrarPayloadCliente(config.data, LLAVE_PAYLOAD) };
+    config._cuerpoCifrado = true;
+  }
   return config;
 });
 
@@ -83,7 +101,10 @@ function cerrarSesionPorVencimiento() {
 }
 
 client.interceptors.response.use(
-  (response) => {
+  async (response) => {
+    if (esPayloadCifrado(response.data?.payload)) {
+      response.data = await descifrarPayloadCliente(response.data.payload, LLAVE_PAYLOAD);
+    }
     response.data = normalizarUrlsDeArchivos(response.data);
     return response;
   },

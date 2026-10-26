@@ -2,7 +2,7 @@ import client from './client';
 
 export async function login(email, password) {
   const { data } = await client.post('/auth/login', { email, password });
-  return data; // { token, refreshToken, usuario }
+  return data; // { token, refreshToken, usuario } — el cuerpo viaja cifrado (api/client.js)
 }
 
 export async function obtenerPerfil() {

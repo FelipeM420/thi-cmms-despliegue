@@ -6,6 +6,9 @@ node_modules/
 .env
 *.env
 **/.env
+# Vite: .env.local y .env.<modo>.local (la llave de cifrado de payloads de cada entorno)
+.env.local
+.env.*.local
 
 # Archivos comprimidos y de empaquetado
 *.zip
